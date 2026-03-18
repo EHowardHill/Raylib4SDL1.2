@@ -1,8 +1,5 @@
 /*
  * input.cpp — Keyboard and mouse input, with Raylib→SDL 1.2 key translation.
- *
- * All state arrays are global (not static!) so core.cpp can update them
- * each frame from WindowShouldClose().
  */
 
 #include "raylib.h"

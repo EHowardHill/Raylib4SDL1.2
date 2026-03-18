@@ -5,8 +5,8 @@
  * Run:    ./example_app   (needs default.ttf in the same directory)
  */
 
-#include "raylib.h"
-#include "raymath.h"
+#include "headers/raylib.h"
+#include "headers/raymath.h"
 
 int main(void) {
   InitWindow(800, 600, "raylib-sdl12 test");
