@@ -1,0 +1,3713 @@
+prompt.md: 
+I want to write a library for C++ projects. It must have an interface identical to Raylib 5, so that you can use it in conjunction with Raylib-based projects. However, the backend is the older SDL 1.2. The purpose for this is to port Raylib projects to outdated platforms, like Windows 95 and classic Mac OS. It must ONLY support the 2D features of Raylib. It must not impliment any 3D functions (the expectation is that the programmer will impliment them themselves).
+
+headers/raylib.h: 
+/*******************************************************************************************
+*   raylib-sdl12 - A Raylib 5-compatible API backed by SDL 1.2
+*
+*   Purpose: Port Raylib-based 2D projects to retro platforms (Win95, Classic Mac OS, etc.)
+*   NOTE: 3D functions are declared as stubs for ABI compatibility but are NOT implemented.
+*
+*   DIFFERENCES FROM UPSTREAM RAYLIB:
+*     - Textures are SDL_Surface* stored in the 'id' field (cast to unsigned int)
+*     - Fonts use SDL_ttf; the TTF_Font* is smuggled in font.texture.id
+*     - Audio uses SDL_mixer; Mix_Chunk*/Mix_Music* stored in stream.buffer/ctxData
+*     - No GPU acceleration — everything is software-rendered
+*     - Rotation/scaling on textures only works via SDL_SoftStretch (no rotation)
+*     - Color tinting on blits is ignored for performance on retro CPUs
+*
+********************************************************************************************/
+
+#ifndef RAYLIB_H
+#define RAYLIB_H
+
+#ifndef __cplusplus
+#include <stdbool.h>
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  Fundamental Types (must come before any function that uses them) */
+  /* --------------------------------------------------------------------------
+   */
+
+  typedef struct Vector2 {
+    float x;
+    float y;
+  } Vector2;
+
+  typedef struct Vector3 {
+    float x;
+    float y;
+    float z;
+  } Vector3;
+
+  typedef struct Vector4 {
+    float x;
+    float y;
+    float z;
+    float w;
+  } Vector4;
+
+  typedef Vector4 Quaternion;
+
+  typedef struct Matrix {
+    float m0, m4, m8, m12;
+    float m1, m5, m9, m13;
+    float m2, m6, m10, m14;
+    float m3, m7, m11, m15;
+  } Matrix;
+
+  typedef struct Color {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+    unsigned char a;
+  } Color;
+
+  typedef struct Rectangle {
+    float x;
+    float y;
+    float width;
+    float height;
+  } Rectangle;
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  Color Constants */
+  /* --------------------------------------------------------------------------
+   */
+
+#define LIGHTGRAY (Color){200, 200, 200, 255}
+#define GRAY (Color){130, 130, 130, 255}
+#define DARKGRAY (Color){80, 80, 80, 255}
+#define YELLOW (Color){253, 249, 0, 255}
+#define GOLD (Color){255, 203, 0, 255}
+#define ORANGE (Color){255, 161, 0, 255}
+#define PINK (Color){255, 109, 194, 255}
+#define RED (Color){230, 41, 55, 255}
+#define MAROON (Color){190, 33, 55, 255}
+#define GREEN (Color){0, 228, 48, 255}
+#define LIME (Color){0, 158, 47, 255}
+#define DARKGREEN (Color){0, 117, 44, 255}
+#define SKYBLUE (Color){102, 191, 255, 255}
+#define BLUE (Color){0, 121, 241, 255}
+#define DARKBLUE (Color){0, 82, 172, 255}
+#define PURPLE (Color){200, 122, 255, 255}
+#define VIOLET (Color){135, 60, 190, 255}
+#define DARKPURPLE (Color){112, 31, 126, 255}
+#define BEIGE (Color){211, 176, 131, 255}
+#define BROWN (Color){127, 106, 79, 255}
+#define DARKBROWN (Color){76, 63, 47, 255}
+#define WHITE (Color){255, 255, 255, 255}
+#define BLACK (Color){0, 0, 0, 255}
+#define BLANK (Color){0, 0, 0, 0}
+#define MAGENTA (Color){255, 0, 255, 255}
+#define RAYWHITE (Color){245, 245, 245, 255}
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  Useful Math Constants */
+  /* --------------------------------------------------------------------------
+   */
+
+#ifndef PI
+#define PI 3.14159265358979323846f
+#endif
+#ifndef DEG2RAD
+#define DEG2RAD (PI / 180.0f)
+#endif
+#ifndef RAD2DEG
+#define RAD2DEG (180.0f / PI)
+#endif
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  Enumerations */
+  /* --------------------------------------------------------------------------
+   */
+
+  typedef enum {
+    MOUSE_BUTTON_LEFT = 0,
+    MOUSE_BUTTON_RIGHT = 1,
+    MOUSE_BUTTON_MIDDLE = 2,
+    MOUSE_BUTTON_SIDE = 3,
+    MOUSE_BUTTON_EXTRA = 4,
+    MOUSE_BUTTON_FORWARD = 5,
+    MOUSE_BUTTON_BACK = 6,
+  } MouseButton;
+
+  typedef enum {
+    KEY_NULL = 0,
+    KEY_APOSTROPHE = 39,
+    KEY_COMMA = 44,
+    KEY_MINUS = 45,
+    KEY_PERIOD = 46,
+    KEY_SLASH = 47,
+    KEY_ZERO = 48,
+    KEY_ONE = 49,
+    KEY_TWO = 50,
+    KEY_THREE = 51,
+    KEY_FOUR = 52,
+    KEY_FIVE = 53,
+    KEY_SIX = 54,
+    KEY_SEVEN = 55,
+    KEY_EIGHT = 56,
+    KEY_NINE = 57,
+    KEY_SEMICOLON = 59,
+    KEY_EQUAL = 61,
+    KEY_A = 65,
+    KEY_B = 66,
+    KEY_C = 67,
+    KEY_D = 68,
+    KEY_E = 69,
+    KEY_F = 70,
+    KEY_G = 71,
+    KEY_H = 72,
+    KEY_I = 73,
+    KEY_J = 74,
+    KEY_K = 75,
+    KEY_L = 76,
+    KEY_M = 77,
+    KEY_N = 78,
+    KEY_O = 79,
+    KEY_P = 80,
+    KEY_Q = 81,
+    KEY_R = 82,
+    KEY_S = 83,
+    KEY_T = 84,
+    KEY_U = 85,
+    KEY_V = 86,
+    KEY_W = 87,
+    KEY_X = 88,
+    KEY_Y = 89,
+    KEY_Z = 90,
+    KEY_SPACE = 32,
+    KEY_ESCAPE = 256,
+    KEY_ENTER = 257,
+    KEY_TAB = 258,
+    KEY_BACKSPACE = 259,
+    KEY_INSERT = 260,
+    KEY_DELETE = 261,
+    KEY_RIGHT = 262,
+    KEY_LEFT = 263,
+    KEY_DOWN = 264,
+    KEY_UP = 265,
+    KEY_PAGE_UP = 266,
+    KEY_PAGE_DOWN = 267,
+    KEY_HOME = 268,
+    KEY_END = 269,
+    KEY_CAPS_LOCK = 280,
+    KEY_SCROLL_LOCK = 281,
+    KEY_NUM_LOCK = 282,
+    KEY_PRINT_SCREEN = 283,
+    KEY_PAUSE = 284,
+    KEY_F1 = 290,
+    KEY_F2 = 291,
+    KEY_F3 = 292,
+    KEY_F4 = 293,
+    KEY_F5 = 294,
+    KEY_F6 = 295,
+    KEY_F7 = 296,
+    KEY_F8 = 297,
+    KEY_F9 = 298,
+    KEY_F10 = 299,
+    KEY_F11 = 300,
+    KEY_F12 = 301,
+    KEY_LEFT_SHIFT = 340,
+    KEY_LEFT_CONTROL = 341,
+    KEY_LEFT_ALT = 342,
+    KEY_LEFT_SUPER = 343,
+    KEY_RIGHT_SHIFT = 344,
+    KEY_RIGHT_CONTROL = 345,
+    KEY_RIGHT_ALT = 346,
+    KEY_RIGHT_SUPER = 347,
+  } KeyboardKey;
+
+  typedef enum {
+    FLAG_VSYNC_HINT = 0x00000040,
+    FLAG_FULLSCREEN_MODE = 0x00000002,
+    FLAG_WINDOW_RESIZABLE = 0x00000004,
+    FLAG_WINDOW_UNDECORATED = 0x00000008,
+    FLAG_WINDOW_HIDDEN = 0x00000080,
+    FLAG_WINDOW_MINIMIZED = 0x00000200,
+    FLAG_WINDOW_MAXIMIZED = 0x00000400,
+    FLAG_WINDOW_UNFOCUSED = 0x00000800,
+    FLAG_WINDOW_TOPMOST = 0x00001000,
+    FLAG_WINDOW_ALWAYS_RUN = 0x00000100,
+    FLAG_WINDOW_TRANSPARENT = 0x00000010,
+    FLAG_WINDOW_HIGHDPI = 0x00002000,
+    FLAG_WINDOW_MOUSE_PASSTHROUGH = 0x00004000,
+    FLAG_MSAA_4X_HINT = 0x00000020,
+    FLAG_INTERLACED_HINT = 0x00010000,
+  } ConfigFlags;
+
+  /* --- Blend Modes --- */
+  typedef enum {
+    BLEND_ALPHA = 0,         /* Blend textures considering alpha (default) */
+    BLEND_ADDITIVE,          /* Blend textures adding colors */
+    BLEND_MULTIPLIED,        /* Blend textures multiplying colors */
+    BLEND_ADD_COLORS,        /* Alternative Additive */
+    BLEND_SUBTRACT_COLORS,   /* Subtract colors */
+    BLEND_ALPHA_PREMULTIPLY, /* Premultiplied alpha */
+    BLEND_CUSTOM,            /* Custom blend mode */
+    BLEND_CUSTOM_SEPARATE    /* Custom blend mode with separate alpha */
+  } BlendMode;
+
+  void BeginBlendMode(int mode);
+  void EndBlendMode(void);
+
+  /* --- NPatch Layout Enums --- */
+  typedef enum {
+    NPATCH_NINE_PATCH = 0,
+    NPATCH_THREE_PATCH_VERTICAL,
+    NPATCH_THREE_PATCH_HORIZONTAL
+  } NPatchLayout;
+
+  void DrawTextureNPatch(Texture2D texture, NPatchInfo nPatchInfo,
+                         Rectangle dest, Vector2 origin, float rotation,
+                         Color tint);
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  2D Rendering and Image Types */
+  /* --------------------------------------------------------------------------
+   */
+
+  typedef struct Image {
+    void *data; /* Pointer to SDL_Surface */
+    int width;
+    int height;
+    int mipmaps; /* Always 1 */
+    int format;
+  } Image;
+
+  typedef struct Texture {
+    unsigned int id; /* SDL_Surface* cast to unsigned int */
+    int width;
+    int height;
+    int mipmaps; /* Always 1 */
+    int format;
+  } Texture;
+
+  typedef Texture Texture2D;
+  typedef Texture TextureCubemap;
+
+  typedef struct RenderTexture {
+    unsigned int id;
+    Texture texture;
+    Texture depth;
+  } RenderTexture;
+
+  typedef RenderTexture RenderTexture2D;
+
+  typedef struct NPatchInfo {
+    Rectangle source;
+    int left;
+    int top;
+    int right;
+    int bottom;
+    int layout;
+  } NPatchInfo;
+
+  typedef struct GlyphInfo {
+    int value;
+    int offsetX;
+    int offsetY;
+    int advanceX;
+    Image image;
+  } GlyphInfo;
+
+  typedef struct Font {
+    int baseSize;
+    int glyphCount;
+    int glyphPadding;
+    Texture2D texture; /* TTF_Font* smuggled in texture.id */
+    Rectangle *recs;
+    GlyphInfo *glyphs;
+  } Font;
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  Camera Types */
+  /* --------------------------------------------------------------------------
+   */
+
+  typedef struct Camera2D {
+    Vector2 offset;
+    Vector2 target;
+    float rotation;
+    float zoom;
+  } Camera2D;
+
+  typedef struct Camera3D {
+    Vector3 position;
+    Vector3 target;
+    Vector3 up;
+    float fovy;
+    int projection;
+  } Camera3D;
+
+  typedef Camera3D Camera;
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  3D / Shader Types (declared for ABI compatibility, NOT implemented) */
+  /* --------------------------------------------------------------------------
+   */
+
+  typedef struct Shader {
+    unsigned int id;
+    int *locs;
+  } Shader;
+
+  typedef struct MaterialMap {
+    Texture2D texture;
+    Color color;
+    float value;
+  } MaterialMap;
+
+  typedef struct Material {
+    Shader shader;
+    MaterialMap *maps;
+    float params[4];
+  } Material;
+
+  typedef struct Transform {
+    Vector3 translation;
+    Quaternion rotation;
+    Vector3 scale;
+  } Transform;
+
+  typedef struct BoneInfo {
+    char name[32];
+    int parent;
+  } BoneInfo;
+
+  typedef struct Mesh {
+    int vertexCount;
+    int triangleCount;
+    float *vertices;
+    float *texcoords;
+    float *texcoords2;
+    float *normals;
+    float *tangents;
+    unsigned char *colors;
+    unsigned short *indices;
+    float *animVertices;
+    float *animNormals;
+    unsigned char *boneIds;
+    float *boneWeights;
+    unsigned int vaoId;
+    unsigned int *vboId;
+  } Mesh;
+
+  typedef struct Model {
+    Matrix transform;
+    int meshCount;
+    int materialCount;
+    Mesh *meshes;
+    Material *materials;
+    int *meshMaterial;
+    int boneCount;
+    BoneInfo *bones;
+    Transform *bindPose;
+  } Model;
+
+  typedef struct ModelAnimation {
+    int boneCount;
+    int frameCount;
+    BoneInfo *bones;
+    Transform **framePoses;
+    char name[32];
+  } ModelAnimation;
+
+  typedef struct Ray {
+    Vector3 position;
+    Vector3 direction;
+  } Ray;
+
+  typedef struct RayCollision {
+    bool hit;
+    float distance;
+    Vector3 point;
+    Vector3 normal;
+  } RayCollision;
+
+  typedef struct BoundingBox {
+    Vector3 min;
+    Vector3 max;
+  } BoundingBox;
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  Audio Types */
+  /* --------------------------------------------------------------------------
+   */
+
+  typedef struct Wave {
+    unsigned int frameCount;
+    unsigned int sampleRate;
+    unsigned int sampleSize;
+    unsigned int channels;
+    void *data;
+  } Wave;
+
+  typedef struct AudioStream {
+    void *buffer; /* Mix_Chunk* for sounds */
+    void *processor;
+    unsigned int sampleRate;
+    unsigned int sampleSize;
+    unsigned int channels;
+  } AudioStream;
+
+  typedef struct Sound {
+    AudioStream stream;
+    unsigned int frameCount;
+  } Sound;
+
+  typedef struct Music {
+    AudioStream stream;
+    unsigned int frameCount;
+    bool looping;
+    int ctxType;
+    void *ctxData; /* Mix_Music* for music streams */
+  } Music;
+
+  /* --------------------------------------------------------------------------
+   */
+  /*  Utility Types */
+  /* --------------------------------------------------------------------------
+   */
+
+  typedef struct VrDeviceInfo {
+    int hResolution;
+    int vResolution;
+    float hScreenSize;
+    float vScreenSize;
+    float vScreenCenter;
+    float eyeToScreenDistance;
+    float lensSeparationDistance;
+    float interpupillaryDistance;
+    float lensDistortionValues[4];
+    float chromaAbCorrection[4];
+  } VrDeviceInfo;
+
+  typedef struct VrStereoConfig {
+    Matrix projection[2];
+    Matrix viewOffset[2];
+    float leftLensCenter[2];
+    float rightLensCenter[2];
+    float leftScreenCenter[2];
+    float rightScreenCenter[2];
+    float scale[2];
+    float scaleIn[2];
+  } VrStereoConfig;
+
+  typedef struct FilePathList {
+    unsigned int capacity;
+    unsigned int count;
+    char **paths;
+  } FilePathList;
+
+  typedef struct AutomationEvent {
+    unsigned int frame;
+    unsigned int type;
+    int params[4];
+  } AutomationEvent;
+
+  typedef struct AutomationEventList {
+    unsigned int capacity;
+    unsigned int count;
+    AutomationEvent *events;
+  } AutomationEventList;
+
+  /* ==========================================================================
+   */
+  /*  Function Declarations */
+  /* ==========================================================================
+   */
+
+  /* --- Window and System --- */
+  void InitWindow(int width, int height, const char *title);
+  void CloseWindow(void);
+  bool WindowShouldClose(void);
+  bool IsWindowReady(void);
+  bool IsWindowFullscreen(void);
+  bool IsWindowHidden(void);
+  bool IsWindowMinimized(void);
+  bool IsWindowMaximized(void);
+  bool IsWindowFocused(void);
+  bool IsWindowResized(void);
+  void SetWindowTitle(const char *title);
+  void SetWindowPosition(int x, int y);
+  void SetWindowMinSize(int width, int height);
+  void SetWindowSize(int width, int height);
+  int GetScreenWidth(void);
+  int GetScreenHeight(void);
+  void SetTargetFPS(int fps);
+  int GetFPS(void);
+  float GetFrameTime(void);
+  double GetTime(void);
+  void SetConfigFlags(unsigned int flags);
+  void ToggleFullscreen(void);
+
+  /* --- Drawing --- */
+  void BeginDrawing(void);
+  void EndDrawing(void);
+  void ClearBackground(Color color);
+
+  /* --- Camera 2D --- */
+  void BeginMode2D(Camera2D camera);
+  void EndMode2D(void);
+
+  /* --- Keyboard Input --- */
+  bool IsKeyPressed(int key);
+  bool IsKeyDown(int key);
+  bool IsKeyReleased(int key);
+  bool IsKeyUp(int key);
+  int GetKeyPressed(void);
+  int GetCharPressed(void);
+
+  /* --- Mouse Input --- */
+  bool IsMouseButtonPressed(int button);
+  bool IsMouseButtonDown(int button);
+  bool IsMouseButtonReleased(int button);
+  bool IsMouseButtonUp(int button);
+  int GetMouseX(void);
+  int GetMouseY(void);
+  Vector2 GetMousePosition(void);
+  void SetMousePosition(int x, int y);
+  float GetMouseWheelMove(void);
+  void ShowCursor(void);
+  void HideCursor(void);
+  bool IsCursorHidden(void);
+
+  /* --- Basic Shapes --- */
+  void DrawPixel(int posX, int posY, Color color);
+  void DrawPixelV(Vector2 position, Color color);
+  void DrawLine(int startPosX, int startPosY, int endPosX, int endPosY,
+                Color color);
+  void DrawLineV(Vector2 startPos, Vector2 endPos, Color color);
+  void DrawLineEx(Vector2 startPos, Vector2 endPos, float thick, Color color);
+  void DrawCircle(int centerX, int centerY, float radius, Color color);
+  void DrawCircleV(Vector2 center, float radius, Color color);
+  void DrawCircleLines(int centerX, int centerY, float radius, Color color);
+  void DrawRectangle(int posX, int posY, int width, int height, Color color);
+  void DrawRectangleV(Vector2 position, Vector2 size, Color color);
+  void DrawRectangleRec(Rectangle rec, Color color);
+  void DrawRectangleLines(int posX, int posY, int width, int height,
+                          Color color);
+  void DrawRectangleLinesEx(Rectangle rec, float lineThick, Color color);
+  void DrawRectangleGradientV(int posX, int posY, int width, int height,
+                              Color top, Color bottom);
+  void DrawRectangleGradientH(int posX, int posY, int width, int height,
+                              Color left, Color right);
+  void DrawRectangleRounded(Rectangle rec, float roundness, int segments,
+                            Color color);
+  void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color);
+  void DrawTriangleLines(Vector2 v1, Vector2 v2, Vector2 v3, Color color);
+  void DrawPoly(Vector2 center, int sides, float radius, float rotation,
+                Color color);
+  void DrawPolyLines(Vector2 center, int sides, float radius, float rotation,
+                     Color color);
+
+  /* --- Splines --- */
+  Vector2 GetSplinePointLinear(Vector2 startPos, Vector2 endPos, float t);
+  void DrawSplineLinear(const Vector2 *points, int pointCount, float thick,
+                        Color color);
+  void DrawSplineBezierCubic(const Vector2 *points, int pointCount, float thick,
+                             Color color);
+
+  /* --- Collision Detection --- */
+  bool CheckCollisionRecs(Rectangle rec1, Rectangle rec2);
+  bool CheckCollisionCircles(Vector2 center1, float radius1, Vector2 center2,
+                             float radius2);
+  bool CheckCollisionCircleRec(Vector2 center, float radius, Rectangle rec);
+  bool CheckCollisionPointRec(Vector2 point, Rectangle rec);
+  bool CheckCollisionPointCircle(Vector2 point, Vector2 center, float radius);
+  bool CheckCollisionPointTriangle(Vector2 point, Vector2 p1, Vector2 p2,
+                                   Vector2 p3);
+  Rectangle GetCollisionRec(Rectangle rec1, Rectangle rec2);
+
+  /* --- Image / Texture Management --- */
+  Image LoadImage(const char *fileName);
+  Image GenImageColor(int width, int height, Color color);
+  void UnloadImage(Image image);
+  Image ImageCopy(Image image);
+  void ImageClearBackground(Image * dst, Color color);
+  void ImageDraw(Image * dst, Image src, Rectangle srcRec, Rectangle dstRec,
+                 Color tint);
+  void ImageFlipVertical(Image * image);
+  void ImageFlipHorizontal(Image * image);
+  void ImageResize(Image * image, int newWidth, int newHeight);
+  Color *LoadImageColors(Image image);
+  void UnloadImageColors(Color * colors);
+
+  Texture2D LoadTexture(const char *fileName);
+  Texture2D LoadTextureFromImage(Image image);
+  void UnloadTexture(Texture2D texture);
+  bool IsTextureValid(Texture2D texture);
+  void UpdateTexture(Texture2D texture, const void *pixels);
+
+  void DrawTexture(Texture2D texture, int posX, int posY, Color tint);
+  void DrawTextureV(Texture2D texture, Vector2 position, Color tint);
+  void DrawTextureRec(Texture2D texture, Rectangle source, Vector2 position,
+                      Color tint);
+  void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
+                      Vector2 origin, float rotation, Color tint);
+
+  /* --- Text / Font --- */
+  Font GetFontDefault(void);
+  Font LoadFont(const char *fileName);
+  Font LoadFontEx(const char *fileName, int fontSize, int *codepoints,
+                  int codepointCount);
+  void UnloadFont(Font font);
+  bool IsFontValid(Font font);
+
+  void DrawText(const char *text, int posX, int posY, int fontSize,
+                Color color);
+  void DrawTextEx(Font font, const char *text, Vector2 position, float fontSize,
+                  float spacing, Color tint);
+  int MeasureText(const char *text, int fontSize);
+  Vector2 MeasureTextEx(Font font, const char *text, float fontSize,
+                        float spacing);
+
+  /* --- Text Strings Management --- */
+  unsigned int TextLength(const char *text);
+  const char *TextFormat(const char *text, ...);
+  int TextCopy(char *dst, const char *src);
+  bool TextIsEqual(const char *text1, const char *text2);
+  const char *TextToUpper(const char *text);
+  const char *TextToLower(const char *text);
+
+  /* --- Image-Text --- */
+  Image ImageText(const char *text, int fontSize, Color color);
+  Image ImageTextEx(Font font, const char *text, float fontSize, float spacing,
+                    Color tint);
+  void ImageDrawText(Image * dst, const char *text, int posX, int posY,
+                     int fontSize, Color color);
+
+  /* --- Color Utilities --- */
+  bool ColorIsEqual(Color col1, Color col2);
+  Color Fade(Color color, float alpha);
+  Color ColorAlpha(Color color, float alpha);
+  int ColorToInt(Color color);
+  Color GetColor(unsigned int hexValue);
+
+  /* --- Audio Device Management --- */
+  void InitAudioDevice(void);
+  void CloseAudioDevice(void);
+  bool IsAudioDeviceReady(void);
+  void SetMasterVolume(float volume);
+
+  /* --- Sound --- */
+  Sound LoadSound(const char *fileName);
+  void UnloadSound(Sound sound);
+  void PlaySound(Sound sound);
+  void StopSound(Sound sound);
+  void PauseSound(Sound sound);
+  void ResumeSound(Sound sound);
+  bool IsSoundPlaying(Sound sound);
+  void SetSoundVolume(Sound sound, float volume);
+
+  /* --- Music --- */
+  Music LoadMusicStream(const char *fileName);
+  void UnloadMusicStream(Music music);
+  void PlayMusicStream(Music music);
+  bool IsMusicStreamPlaying(Music music);
+  void UpdateMusicStream(Music music);
+  void StopMusicStream(Music music);
+  void PauseMusicStream(Music music);
+  void ResumeMusicStream(Music music);
+  void SetMusicVolume(Music music, float volume);
+  float GetMusicTimeLength(Music music);
+  float GetMusicTimePlayed(Music music);
+
+  /* --- Misc / Utility --- */
+  int GetRandomValue(int min, int max);
+  void TraceLog(int logLevel, const char *text, ...);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* RAYLIB_H */
+
+
+headers/raymath.h: 
+#ifndef RAYMATH_H
+#define RAYMATH_H
+
+#include "raylib.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#ifndef EPSILON
+#define EPSILON 0.000001f
+#endif
+
+/* DEG2RAD, RAD2DEG, PI already defined in raylib.h — don't redefine */
+
+typedef struct float3 {
+  float v[3];
+} float3;
+typedef struct float16 {
+  float v[16];
+} float16;
+
+/* --- Vector2 Math --- */
+Vector2 Vector2Zero(void);
+Vector2 Vector2One(void);
+Vector2 Vector2Add(Vector2 v1, Vector2 v2);
+Vector2 Vector2Subtract(Vector2 v1, Vector2 v2);
+Vector2 Vector2Scale(Vector2 v, float scale);
+Vector2 Vector2Multiply(Vector2 v1, Vector2 v2);
+Vector2 Vector2Negate(Vector2 v);
+Vector2 Vector2Divide(Vector2 v1, Vector2 v2);
+float Vector2Length(Vector2 v);
+float Vector2LengthSqr(Vector2 v);
+float Vector2Distance(Vector2 v1, Vector2 v2);
+float Vector2DistanceSqr(Vector2 v1, Vector2 v2);
+float Vector2Angle(Vector2 v1, Vector2 v2);
+Vector2 Vector2Normalize(Vector2 v);
+float Vector2DotProduct(Vector2 v1, Vector2 v2);
+float Vector2CrossProduct(Vector2 v1, Vector2 v2);
+Vector2 Vector2Lerp(Vector2 v1, Vector2 v2, float amount);
+Vector2 Vector2Rotate(Vector2 v, float angle);
+Vector2 Vector2Clamp(Vector2 v, Vector2 min, Vector2 max);
+Vector2 Vector2ClampValue(Vector2 v, float min, float max);
+bool Vector2Equals(Vector2 p, Vector2 q);
+
+/* --- Minimal Vector3 Math (for 3D type compatibility) --- */
+Vector3 Vector3Zero(void);
+Vector3 Vector3One(void);
+Vector3 Vector3Add(Vector3 v1, Vector3 v2);
+Vector3 Vector3Subtract(Vector3 v1, Vector3 v2);
+Vector3 Vector3Scale(Vector3 v, float scalar);
+float Vector3Length(Vector3 v);
+Vector3 Vector3Normalize(Vector3 v);
+float Vector3DotProduct(Vector3 v1, Vector3 v2);
+Vector3 Vector3CrossProduct(Vector3 v1, Vector3 v2);
+
+/* --- Matrix Math (identity only, stubs for the rest) --- */
+Matrix MatrixIdentity(void);
+Matrix MatrixMultiply(Matrix left, Matrix right);
+
+/* --- Quaternion (minimal stubs) --- */
+Quaternion QuaternionIdentity(void);
+
+/* --- Gamepad Enums --- */
+typedef enum {
+  GAMEPAD_BUTTON_UNKNOWN = 0,
+  GAMEPAD_BUTTON_LEFT_FACE_UP,
+  GAMEPAD_BUTTON_LEFT_FACE_RIGHT,
+  GAMEPAD_BUTTON_LEFT_FACE_DOWN,
+  GAMEPAD_BUTTON_LEFT_FACE_LEFT,
+  GAMEPAD_BUTTON_RIGHT_FACE_UP,
+  GAMEPAD_BUTTON_RIGHT_FACE_RIGHT,
+  GAMEPAD_BUTTON_RIGHT_FACE_DOWN,
+  GAMEPAD_BUTTON_RIGHT_FACE_LEFT,
+  GAMEPAD_BUTTON_LEFT_TRIGGER_1,
+  GAMEPAD_BUTTON_LEFT_TRIGGER_2,
+  GAMEPAD_BUTTON_RIGHT_TRIGGER_1,
+  GAMEPAD_BUTTON_RIGHT_TRIGGER_2,
+  GAMEPAD_BUTTON_MIDDLE_LEFT,  /* PS3 Select */
+  GAMEPAD_BUTTON_MIDDLE,       /* PS Button/XBOX Button */
+  GAMEPAD_BUTTON_MIDDLE_RIGHT, /* PS3 Start */
+  GAMEPAD_BUTTON_LEFT_THUMB,
+  GAMEPAD_BUTTON_RIGHT_THUMB
+} GamepadButton;
+
+typedef enum {
+  GAMEPAD_AXIS_LEFT_X = 0,
+  GAMEPAD_AXIS_LEFT_Y = 1,
+  GAMEPAD_AXIS_RIGHT_X = 2,
+  GAMEPAD_AXIS_RIGHT_Y = 3,
+  GAMEPAD_AXIS_LEFT_TRIGGER = 4,
+  GAMEPAD_AXIS_RIGHT_TRIGGER = 5
+} GamepadAxis;
+
+/* --- Gamepad Functions --- */
+bool IsGamepadAvailable(int gamepad);
+const char *GetGamepadName(int gamepad);
+bool IsGamepadButtonPressed(int gamepad, int button);
+bool IsGamepadButtonDown(int gamepad, int button);
+bool IsGamepadButtonReleased(int gamepad, int button);
+bool IsGamepadButtonUp(int gamepad, int button);
+int GetGamepadButtonPressed(void);
+int GetGamepadAxisCount(int gamepad);
+float GetGamepadAxisMovement(int gamepad, int axis);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* RAYMATH_H */
+
+
+src/core.cpp: 
+/*
+ * core.cpp — Window management, frame timing, Camera2D, and utility functions.
+ *
+ * Owns the global `screen` surface and the frame clock.
+ */
+
+#include "raylib.h"
+
+#include <SDL.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* ---- Text subsystem hooks (text.cpp) ---- */
+extern void InitTextSystem(void);
+extern void CloseTextSystem(void);
+
+/* ---- Input subsystem hooks (input.cpp) ---- */
+extern void InitGamepads(void);
+extern void CloseGamepads(void);
+extern void UpdateGamepads(void);
+
+/* ---- Input state (input.cpp owns these) ---- */
+extern unsigned char rl_currentKeyState[];
+extern unsigned char rl_previousKeyState[];
+extern unsigned char rl_currentMouseState[];
+extern unsigned char rl_previousMouseState[];
+extern int rl_mouseX;
+extern int rl_mouseY;
+extern float rl_mouseWheelMove;
+extern int rl_lastKeyPressed;
+extern int rl_lastCharPressed;
+
+/* ---- Globals owned by this translation unit ---- */
+SDL_Surface *rl_screen = NULL; /* Visible to textures / shapes / text */
+SDL_Surface *rl_activeSurface = NULL;
+
+static int screenWidth = 0;
+static int screenHeight = 0;
+static bool shouldClose = false;
+static int targetFPS = 60;
+static Uint32 frameStart = 0;
+static float frameDelta = 0.0f; /* Seconds elapsed last frame */
+static Uint32 initTicks = 0;    /* SDL_GetTicks() at InitWindow */
+static unsigned int configFlags = 0;
+static bool cursorHidden = false;
+
+/* ---- Camera2D state ---- */
+static bool camera2DActive = false;
+static Camera2D currentCamera2D = {{0, 0}, {0, 0}, 0.0f, 1.0f};
+
+/* ======================================================================== */
+/*  Window / System                                                         */
+/* ======================================================================== */
+
+void InitWindow(int width, int height, const char *title) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
+    fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
+    return;
+  }
+
+  Uint32 flags = SDL_SWSURFACE;
+  if (configFlags & FLAG_FULLSCREEN_MODE)
+    flags |= SDL_FULLSCREEN;
+
+  rl_screen = SDL_SetVideoMode(width, height, 32, flags);
+  rl_activeSurface = rl_screen;
+
+  if (!rl_screen) {
+    fprintf(stderr, "SDL_SetVideoMode failed: %s\n", SDL_GetError());
+    return;
+  }
+
+  SDL_WM_SetCaption(title, NULL);
+  screenWidth = width;
+  screenHeight = height;
+  shouldClose = false;
+  initTicks = SDL_GetTicks();
+
+  /* Zero out input state */
+  memset(rl_currentKeyState, 0, sizeof(unsigned char) * SDLK_LAST);
+  memset(rl_previousKeyState, 0, sizeof(unsigned char) * SDLK_LAST);
+  memset(rl_currentMouseState, 0, 8);
+  memset(rl_previousMouseState, 0, 8);
+
+  InitTextSystem();
+  InitGamepads();
+}
+
+void CloseWindow(void) {
+  CloseTextSystem();
+  CloseGamepads();
+  SDL_Quit();
+  rl_screen = NULL;
+}
+
+bool WindowShouldClose(void) {
+  /* 1. Save previous frame's input state */
+  memcpy(rl_previousKeyState, rl_currentKeyState, SDLK_LAST);
+  memcpy(rl_previousMouseState, rl_currentMouseState, 8);
+
+  UpdateGamepads();
+
+  /* Reset per-frame input values */
+  rl_mouseWheelMove = 0.0f;
+  rl_lastKeyPressed = 0;
+  rl_lastCharPressed = 0;
+
+  /* 2. Process all pending SDL events */
+  SDL_Event event;
+  while (SDL_PollEvent(&event)) {
+    switch (event.type) {
+    case SDL_QUIT:
+      shouldClose = true;
+      break;
+
+    case SDL_KEYDOWN:
+      rl_lastKeyPressed = event.key.keysym.sym;
+      /* Store printable characters for GetCharPressed() */
+      if (event.key.keysym.unicode > 0 && event.key.keysym.unicode < 128) {
+        rl_lastCharPressed = (int)event.key.keysym.unicode;
+      }
+      break;
+
+    case SDL_MOUSEBUTTONDOWN:
+      if (event.button.button == SDL_BUTTON_WHEELUP)
+        rl_mouseWheelMove = 1.0f;
+      else if (event.button.button == SDL_BUTTON_WHEELDOWN)
+        rl_mouseWheelMove = -1.0f;
+      break;
+
+    default:
+      break;
+    }
+  }
+
+  /* 3. Update current frame's state from SDL */
+  Uint8 *keys = SDL_GetKeyState(NULL);
+  memcpy(rl_currentKeyState, keys, SDLK_LAST);
+
+  Uint8 mouseButtons = SDL_GetMouseState(&rl_mouseX, &rl_mouseY);
+  rl_currentMouseState[1] =
+      (mouseButtons & SDL_BUTTON(SDL_BUTTON_LEFT)) ? 1 : 0;
+  rl_currentMouseState[2] =
+      (mouseButtons & SDL_BUTTON(SDL_BUTTON_MIDDLE)) ? 1 : 0;
+  rl_currentMouseState[3] =
+      (mouseButtons & SDL_BUTTON(SDL_BUTTON_RIGHT)) ? 1 : 0;
+
+  /* Enable Unicode translation for GetCharPressed */
+  SDL_EnableUNICODE(1);
+
+  return shouldClose;
+}
+
+void SetConfigFlags(unsigned int flags) { configFlags = flags; }
+
+bool IsWindowReady(void) { return (rl_screen != NULL); }
+bool IsWindowFullscreen(void) {
+  return (rl_screen && (rl_screen->flags & SDL_FULLSCREEN));
+}
+bool IsWindowHidden(void) { return false; }
+bool IsWindowMinimized(void) {
+  return false; /* SDL 1.2 has no minimize query */
+}
+bool IsWindowMaximized(void) { return false; }
+bool IsWindowFocused(void) { return true; /* Assume focused */ }
+bool IsWindowResized(void) {
+  return false; /* We don't support resize events */
+}
+
+void SetWindowTitle(const char *title) { SDL_WM_SetCaption(title, NULL); }
+void SetWindowPosition(int x, int y) { /* Not supported in SDL 1.2 */ }
+void SetWindowMinSize(int width, int height) { /* Not supported in SDL 1.2 */ }
+
+void SetWindowSize(int width, int height) {
+  rl_screen = SDL_SetVideoMode(width, height, 32, SDL_SWSURFACE);
+  if (rl_screen) {
+    screenWidth = width;
+    screenHeight = height;
+  }
+}
+
+int GetScreenWidth(void) { return screenWidth; }
+int GetScreenHeight(void) { return screenHeight; }
+
+void ToggleFullscreen(void) {
+  /* SDL 1.2 requires re-creating the video surface */
+  Uint32 flags = SDL_SWSURFACE;
+  if (!(rl_screen->flags & SDL_FULLSCREEN))
+    flags |= SDL_FULLSCREEN;
+
+  rl_screen = SDL_SetVideoMode(screenWidth, screenHeight, 32, flags);
+}
+
+/* ======================================================================== */
+/*  Timing                                                                  */
+/* ======================================================================== */
+
+void SetTargetFPS(int fps) { targetFPS = fps; }
+
+int GetFPS(void) {
+  if (frameDelta > 0.0f)
+    return (int)(1.0f / frameDelta);
+  return 0;
+}
+
+float GetFrameTime(void) { return frameDelta; }
+
+double GetTime(void) { return (double)(SDL_GetTicks() - initTicks) / 1000.0; }
+
+/* ======================================================================== */
+/*  Drawing                                                                 */
+/* ======================================================================== */
+
+void BeginDrawing(void) { frameStart = SDL_GetTicks(); }
+
+void EndDrawing(void) {
+  SDL_Flip(rl_screen);
+
+  if (targetFPS > 0) {
+    Uint32 frameTime = SDL_GetTicks() - frameStart;
+    Uint32 targetTime = 1000 / targetFPS;
+    if (frameTime < targetTime) {
+      SDL_Delay(targetTime - frameTime);
+    }
+  }
+
+  Uint32 frameEnd = SDL_GetTicks();
+  frameDelta = (float)(frameEnd - frameStart) / 1000.0f;
+  if (frameDelta <= 0.0f)
+    frameDelta = 0.001f; /* Avoid division by zero */
+}
+
+void ClearBackground(Color color) {
+  if (!rl_screen)
+    return;
+  Uint32 mapped = SDL_MapRGB(rl_screen->format, color.r, color.g, color.b);
+  SDL_FillRect(rl_screen, NULL, mapped);
+}
+
+/* ======================================================================== */
+/*  Camera 2D                                                               */
+/* ======================================================================== */
+
+void BeginMode2D(Camera2D camera) {
+  camera2DActive = true;
+  currentCamera2D = camera;
+  /* The actual transform is applied in shapes / texture draw calls
+     by reading rl_GetCamera2D() — or we apply a global offset.
+     For a minimal SDL 1.2 port, we just store the state; individual
+     draw helpers can query it if needed. */
+}
+
+void EndMode2D(void) {
+  camera2DActive = false;
+  currentCamera2D.offset = (Vector2){0, 0};
+  currentCamera2D.target = (Vector2){0, 0};
+  currentCamera2D.rotation = 0.0f;
+  currentCamera2D.zoom = 1.0f;
+}
+
+/* Accessor for other translation units that need Camera2D info */
+bool rl_IsCamera2DActive(void) { return camera2DActive; }
+Camera2D rl_GetCamera2D(void) { return currentCamera2D; }
+
+/* ======================================================================== */
+/*  Cursor                                                                  */
+/* ======================================================================== */
+
+void ShowCursor(void) {
+  SDL_ShowCursor(SDL_ENABLE);
+  cursorHidden = false;
+}
+void HideCursor(void) {
+  SDL_ShowCursor(SDL_DISABLE);
+  cursorHidden = true;
+}
+bool IsCursorHidden(void) { return cursorHidden; }
+
+/* ======================================================================== */
+/*  Misc Utilities                                                          */
+/* ======================================================================== */
+
+int GetRandomValue(int min, int max) {
+  if (min > max) {
+    int t = min;
+    min = max;
+    max = t;
+  }
+  return min + (rand() % (max - min + 1));
+}
+
+void TraceLog(int logLevel, const char *text, ...) {
+  va_list args;
+  va_start(args, text);
+  vfprintf(stderr, text, args);
+  fprintf(stderr, "\n");
+  va_end(args);
+}
+
+/* Convert a World Space 2D position to Screen Space using a Camera2D */
+Vector2 GetWorldToScreen2D(Vector2 position, Camera2D camera) {
+  float x = position.x - camera.target.x;
+  float y = position.y - camera.target.y;
+
+  /* Apply Rotation if needed */
+  if (camera.rotation != 0.0f) {
+    float angle = camera.rotation * DEG2RAD;
+    float cosRot = cosf(angle);
+    float sinRot = sinf(angle);
+
+    float rotX = x * cosRot - y * sinRot;
+    float rotY = x * sinRot + y * cosRot;
+    x = rotX;
+    y = rotY;
+  }
+
+  /* Apply Zoom and Offset */
+  x = (x * camera.zoom) + camera.offset.x;
+  y = (y * camera.zoom) + camera.offset.y;
+
+  return (Vector2){x, y};
+}
+
+/* ======================================================================== */
+/* Scissor Mode (Clipping)                                                  */
+/* ======================================================================== */
+
+void BeginScissorMode(int x, int y, int width, int height) {
+  if (!rl_activeSurface)
+    return;
+
+  SDL_Rect clipRect;
+  clipRect.x = (Sint16)x;
+  clipRect.y = (Sint16)y;
+  clipRect.w = (Uint16)width;
+  clipRect.h = (Uint16)height;
+
+  SDL_SetClipRect(rl_activeSurface, &clipRect);
+}
+
+void EndScissorMode(void) {
+  if (!rl_activeSurface)
+    return;
+  SDL_SetClipRect(rl_activeSurface, NULL); /* Passing NULL removes the clip */
+}
+
+/* ======================================================================== */
+/* Blend Mode State                                                         */
+/* ======================================================================== */
+
+int rl_currentBlendMode = 0; /* Defaults to BLEND_ALPHA */
+
+void BeginBlendMode(int mode) { rl_currentBlendMode = mode; }
+
+void EndBlendMode(void) {
+  rl_currentBlendMode = 0; /* Reset back to standard alpha blending */
+}
+
+src/input.cpp: 
+/*
+ * input.cpp — Keyboard and mouse input, with Raylib→SDL 1.2 key translation.
+ *
+ * All state arrays are global (not static!) so core.cpp can update them
+ * each frame from WindowShouldClose().
+ */
+
+#include "raylib.h"
+
+#include <SDL.h>
+#include <ctype.h>
+#include <string.h>
+
+/* ---- Global Input State (owned here, externed in core.cpp) ---- */
+unsigned char rl_currentKeyState[SDLK_LAST];
+unsigned char rl_previousKeyState[SDLK_LAST];
+
+unsigned char rl_currentMouseState[8]; /* indices 1..3 used for L/M/R */
+unsigned char rl_previousMouseState[8];
+
+int rl_mouseX = 0;
+int rl_mouseY = 0;
+float rl_mouseWheelMove = 0.0f;
+int rl_lastKeyPressed = 0;
+int rl_lastCharPressed = 0;
+
+/* ------------------------------------------------------------------ */
+/*  Raylib Key → SDL 1.2 Key translation                             */
+/* ------------------------------------------------------------------ */
+
+static int MapRaylibKeyToSDL(int key) {
+  /* Standard alphabet: Raylib uses uppercase ASCII, SDL 1.2 uses SDLK_a..z */
+  if (key >= KEY_A && key <= (KEY_A + 25))
+    return SDLK_a + (key - KEY_A);
+
+  /* Digits and common punctuation share ASCII values */
+  if (key >= 32 && key <= 126)
+    return key;
+
+  switch (key) {
+  case KEY_ESCAPE:
+    return SDLK_ESCAPE;
+  case KEY_ENTER:
+    return SDLK_RETURN;
+  case KEY_TAB:
+    return SDLK_TAB;
+  case KEY_BACKSPACE:
+    return SDLK_BACKSPACE;
+  case KEY_INSERT:
+    return SDLK_INSERT;
+  case KEY_DELETE:
+    return SDLK_DELETE;
+  case KEY_RIGHT:
+    return SDLK_RIGHT;
+  case KEY_LEFT:
+    return SDLK_LEFT;
+  case KEY_DOWN:
+    return SDLK_DOWN;
+  case KEY_UP:
+    return SDLK_UP;
+  case KEY_PAGE_UP:
+    return SDLK_PAGEUP;
+  case KEY_PAGE_DOWN:
+    return SDLK_PAGEDOWN;
+  case KEY_HOME:
+    return SDLK_HOME;
+  case KEY_END:
+    return SDLK_END;
+  case KEY_CAPS_LOCK:
+    return SDLK_CAPSLOCK;
+  case KEY_SCROLL_LOCK:
+    return SDLK_SCROLLOCK;
+  case KEY_NUM_LOCK:
+    return SDLK_NUMLOCK;
+  case KEY_PRINT_SCREEN:
+    return SDLK_PRINT;
+  case KEY_PAUSE:
+    return SDLK_PAUSE;
+  case KEY_F1:
+    return SDLK_F1;
+  case KEY_F2:
+    return SDLK_F2;
+  case KEY_F3:
+    return SDLK_F3;
+  case KEY_F4:
+    return SDLK_F4;
+  case KEY_F5:
+    return SDLK_F5;
+  case KEY_F6:
+    return SDLK_F6;
+  case KEY_F7:
+    return SDLK_F7;
+  case KEY_F8:
+    return SDLK_F8;
+  case KEY_F9:
+    return SDLK_F9;
+  case KEY_F10:
+    return SDLK_F10;
+  case KEY_F11:
+    return SDLK_F11;
+  case KEY_F12:
+    return SDLK_F12;
+  case KEY_LEFT_SHIFT:
+    return SDLK_LSHIFT;
+  case KEY_LEFT_CONTROL:
+    return SDLK_LCTRL;
+  case KEY_LEFT_ALT:
+    return SDLK_LALT;
+  case KEY_LEFT_SUPER:
+    return SDLK_LSUPER;
+  case KEY_RIGHT_SHIFT:
+    return SDLK_RSHIFT;
+  case KEY_RIGHT_CONTROL:
+    return SDLK_RCTRL;
+  case KEY_RIGHT_ALT:
+    return SDLK_RALT;
+  case KEY_RIGHT_SUPER:
+    return SDLK_RSUPER;
+  default:
+    return SDLK_UNKNOWN;
+  }
+}
+
+static int MapRaylibMouseToSDL(int button) {
+  switch (button) {
+  case MOUSE_BUTTON_LEFT:
+    return 1; /* SDL_BUTTON_LEFT   */
+  case MOUSE_BUTTON_MIDDLE:
+    return 2; /* SDL_BUTTON_MIDDLE */
+  case MOUSE_BUTTON_RIGHT:
+    return 3; /* SDL_BUTTON_RIGHT  */
+  default:
+    return 0;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Keyboard                                                          */
+/* ------------------------------------------------------------------ */
+
+bool IsKeyDown(int key) {
+  int sdlKey = MapRaylibKeyToSDL(key);
+  if (sdlKey == SDLK_UNKNOWN)
+    return false;
+  return rl_currentKeyState[sdlKey] != 0;
+}
+
+bool IsKeyPressed(int key) {
+  int sdlKey = MapRaylibKeyToSDL(key);
+  if (sdlKey == SDLK_UNKNOWN)
+    return false;
+  return (rl_currentKeyState[sdlKey] != 0) &&
+         (rl_previousKeyState[sdlKey] == 0);
+}
+
+bool IsKeyReleased(int key) {
+  int sdlKey = MapRaylibKeyToSDL(key);
+  if (sdlKey == SDLK_UNKNOWN)
+    return false;
+  return (rl_currentKeyState[sdlKey] == 0) &&
+         (rl_previousKeyState[sdlKey] != 0);
+}
+
+bool IsKeyUp(int key) {
+  int sdlKey = MapRaylibKeyToSDL(key);
+  if (sdlKey == SDLK_UNKNOWN)
+    return false;
+  return rl_currentKeyState[sdlKey] == 0;
+}
+
+int GetKeyPressed(void) {
+  int key = rl_lastKeyPressed;
+  rl_lastKeyPressed = 0;
+  return key;
+}
+
+int GetCharPressed(void) {
+  int ch = rl_lastCharPressed;
+  rl_lastCharPressed = 0;
+  return ch;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Mouse                                                             */
+/* ------------------------------------------------------------------ */
+
+bool IsMouseButtonDown(int button) {
+  int sdlButton = MapRaylibMouseToSDL(button);
+  if (sdlButton == 0)
+    return false;
+  return rl_currentMouseState[sdlButton] != 0;
+}
+
+bool IsMouseButtonPressed(int button) {
+  int sdlButton = MapRaylibMouseToSDL(button);
+  if (sdlButton == 0)
+    return false;
+  return (rl_currentMouseState[sdlButton] != 0) &&
+         (rl_previousMouseState[sdlButton] == 0);
+}
+
+bool IsMouseButtonReleased(int button) {
+  int sdlButton = MapRaylibMouseToSDL(button);
+  if (sdlButton == 0)
+    return false;
+  return (rl_currentMouseState[sdlButton] == 0) &&
+         (rl_previousMouseState[sdlButton] != 0);
+}
+
+bool IsMouseButtonUp(int button) {
+  int sdlButton = MapRaylibMouseToSDL(button);
+  if (sdlButton == 0)
+    return false;
+  return rl_currentMouseState[sdlButton] == 0;
+}
+
+int GetMouseX(void) { return rl_mouseX; }
+int GetMouseY(void) { return rl_mouseY; }
+
+Vector2 GetMousePosition(void) {
+  Vector2 pos = {(float)rl_mouseX, (float)rl_mouseY};
+  return pos;
+}
+
+void SetMousePosition(int x, int y) {
+  SDL_WarpMouse((Uint16)x, (Uint16)y);
+  rl_mouseX = x;
+  rl_mouseY = y;
+}
+
+float GetMouseWheelMove(void) {
+  float move = rl_mouseWheelMove;
+  /* Note: consumption happens in WindowShouldClose() now */
+  return move;
+}
+
+/* ------------------------------------------------------------------ */
+/* Gamepad / Joystick (SDL 1.2)                                       */
+/* ------------------------------------------------------------------ */
+
+#define MAX_GAMEPADS 4
+#define MAX_GAMEPAD_BUTTONS 32
+
+static SDL_Joystick *rl_joysticks[MAX_GAMEPADS] = {NULL};
+static unsigned char rl_currentGamepadState[MAX_GAMEPADS][MAX_GAMEPAD_BUTTONS];
+static unsigned char rl_previousGamepadState[MAX_GAMEPADS][MAX_GAMEPAD_BUTTONS];
+static int rl_lastGamepadButtonPressed = 0;
+
+/* Internal hook to initialize joysticks (Call this in InitWindow) */
+void InitGamepads(void) {
+  SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+  int numJoysticks = SDL_NumJoysticks();
+  if (numJoysticks > MAX_GAMEPADS)
+    numJoysticks = MAX_GAMEPADS;
+
+  for (int i = 0; i < numJoysticks; i++) {
+    rl_joysticks[i] = SDL_JoystickOpen(i);
+  }
+
+  memset(rl_currentGamepadState, 0, sizeof(rl_currentGamepadState));
+  memset(rl_previousGamepadState, 0, sizeof(rl_previousGamepadState));
+}
+
+/* Internal hook to close joysticks (Call this in CloseWindow) */
+void CloseGamepads(void) {
+  for (int i = 0; i < MAX_GAMEPADS; i++) {
+    if (rl_joysticks[i]) {
+      SDL_JoystickClose(rl_joysticks[i]);
+      rl_joysticks[i] = NULL;
+    }
+  }
+}
+
+/* Internal hook to update state (Call this in WindowShouldClose) */
+void UpdateGamepads(void) {
+  SDL_JoystickUpdate();
+  rl_lastGamepadButtonPressed = 0;
+
+  for (int i = 0; i < MAX_GAMEPADS; i++) {
+    if (!rl_joysticks[i])
+      continue;
+
+    int numButtons = SDL_JoystickNumButtons(rl_joysticks[i]);
+    if (numButtons > MAX_GAMEPAD_BUTTONS)
+      numButtons = MAX_GAMEPAD_BUTTONS;
+
+    for (int b = 0; b < numButtons; b++) {
+      rl_previousGamepadState[i][b] = rl_currentGamepadState[i][b];
+      rl_currentGamepadState[i][b] = SDL_JoystickGetButton(rl_joysticks[i], b);
+
+      if (rl_currentGamepadState[i][b] && !rl_previousGamepadState[i][b]) {
+        /* Store the raw SDL button index as the last pressed button */
+        rl_lastGamepadButtonPressed = b;
+      }
+    }
+  }
+}
+
+/* * Generic Mapping: Since SDL 1.2 doesn't have a standard mapping,
+ * we map standard Raylib face buttons to SDL buttons 0-3 sequentially,
+ * which covers 90% of old PC gamepads.
+ */
+static int MapRaylibGamepadToSDL(int button) {
+  switch (button) {
+  case GAMEPAD_BUTTON_RIGHT_FACE_DOWN:
+    return 0; /* 'A' or 'Cross' */
+  case GAMEPAD_BUTTON_RIGHT_FACE_RIGHT:
+    return 1; /* 'B' or 'Circle' */
+  case GAMEPAD_BUTTON_RIGHT_FACE_LEFT:
+    return 2; /* 'X' or 'Square' */
+  case GAMEPAD_BUTTON_RIGHT_FACE_UP:
+    return 3; /* 'Y' or 'Triangle' */
+  case GAMEPAD_BUTTON_LEFT_TRIGGER_1:
+    return 4; /* L1 */
+  case GAMEPAD_BUTTON_RIGHT_TRIGGER_1:
+    return 5; /* R1 */
+  case GAMEPAD_BUTTON_MIDDLE_LEFT:
+    return 6; /* Select */
+  case GAMEPAD_BUTTON_MIDDLE_RIGHT:
+    return 7; /* Start */
+  default:
+    return -1;
+  }
+}
+
+/* --- Raylib Gamepad Public API --- */
+
+bool IsGamepadAvailable(int gamepad) {
+  if (gamepad < 0 || gamepad >= MAX_GAMEPADS)
+    return false;
+  return rl_joysticks[gamepad] != NULL;
+}
+
+const char *GetGamepadName(int gamepad) {
+  if (IsGamepadAvailable(gamepad)) {
+    return SDL_JoystickName(gamepad);
+  }
+  return "Unknown";
+}
+
+bool IsGamepadButtonDown(int gamepad, int button) {
+  if (!IsGamepadAvailable(gamepad))
+    return false;
+  int sdlBtn = MapRaylibGamepadToSDL(button);
+  if (sdlBtn < 0 || sdlBtn >= MAX_GAMEPAD_BUTTONS)
+    return false;
+  return rl_currentGamepadState[gamepad][sdlBtn] != 0;
+}
+
+bool IsGamepadButtonPressed(int gamepad, int button) {
+  if (!IsGamepadAvailable(gamepad))
+    return false;
+  int sdlBtn = MapRaylibGamepadToSDL(button);
+  if (sdlBtn < 0 || sdlBtn >= MAX_GAMEPAD_BUTTONS)
+    return false;
+  return (rl_currentGamepadState[gamepad][sdlBtn] != 0) &&
+         (rl_previousGamepadState[gamepad][sdlBtn] == 0);
+}
+
+bool IsGamepadButtonReleased(int gamepad, int button) {
+  if (!IsGamepadAvailable(gamepad))
+    return false;
+  int sdlBtn = MapRaylibGamepadToSDL(button);
+  if (sdlBtn < 0 || sdlBtn >= MAX_GAMEPAD_BUTTONS)
+    return false;
+  return (rl_currentGamepadState[gamepad][sdlBtn] == 0) &&
+         (rl_previousGamepadState[gamepad][sdlBtn] != 0);
+}
+
+bool IsGamepadButtonUp(int gamepad, int button) {
+  if (!IsGamepadAvailable(gamepad))
+    return false;
+  int sdlBtn = MapRaylibGamepadToSDL(button);
+  if (sdlBtn < 0 || sdlBtn >= MAX_GAMEPAD_BUTTONS)
+    return false;
+  return rl_currentGamepadState[gamepad][sdlBtn] == 0;
+}
+
+int GetGamepadButtonPressed(void) { return rl_lastGamepadButtonPressed; }
+
+int GetGamepadAxisCount(int gamepad) {
+  if (!IsGamepadAvailable(gamepad))
+    return 0;
+  return SDL_JoystickNumAxes(rl_joysticks[gamepad]);
+}
+
+float GetGamepadAxisMovement(int gamepad, int axis) {
+  if (!IsGamepadAvailable(gamepad))
+    return 0.0f;
+
+  /* SDL 1.2 axis values range from -32768 to 32767. Raylib expects -1.0f
+   * to 1.0f */
+  Sint16 value = SDL_JoystickGetAxis(rl_joysticks[gamepad], axis);
+
+  /* Add a small deadzone to prevent drift on old controllers */
+  if (abs(value) < 3200)
+    return 0.0f;
+
+  return (float)value / 32767.0f;
+}
+
+src/raudio.cpp: 
+/*
+ * raudio.cpp — Audio device, sound effects, and music streaming via SDL_mixer.
+ *
+ * SDL_mixer runs audio on a background thread, so UpdateMusicStream() is a
+ * no-op (unlike real Raylib which feeds the buffer manually).
+ */
+
+#include "raylib.h"
+
+#include <SDL.h>
+#include <SDL_mixer.h>
+#include <string.h>
+
+static bool audioInitialized = false;
+static float masterVolume = 1.0f;
+
+/* ======================================================================== */
+/*  Audio Device Management                                                 */
+/* ======================================================================== */
+
+void InitAudioDevice(void) {
+  if (audioInitialized)
+    return;
+
+  if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0)
+    return;
+
+  /* 44.1 kHz, 16-bit signed, stereo, 2048-byte buffer */
+  if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    return;
+  }
+
+  Mix_AllocateChannels(16);
+  audioInitialized = true;
+}
+
+void CloseAudioDevice(void) {
+  if (audioInitialized) {
+    Mix_CloseAudio();
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    audioInitialized = false;
+  }
+}
+
+bool IsAudioDeviceReady(void) { return audioInitialized; }
+
+void SetMasterVolume(float volume) {
+  if (volume < 0.0f)
+    volume = 0.0f;
+  if (volume > 1.0f)
+    volume = 1.0f;
+  masterVolume = volume;
+
+  Mix_Volume(-1, (int)(masterVolume * MIX_MAX_VOLUME));
+  Mix_VolumeMusic((int)(masterVolume * MIX_MAX_VOLUME));
+}
+
+/* ======================================================================== */
+/*  Sound (short effects — Mix_Chunk)                                       */
+/* ======================================================================== */
+
+Sound LoadSound(const char *fileName) {
+  Sound sound;
+  memset(&sound, 0, sizeof(sound));
+  if (!audioInitialized)
+    return sound;
+
+  Mix_Chunk *chunk = Mix_LoadWAV(fileName);
+  if (chunk != NULL) {
+    sound.stream.buffer = (void *)chunk;
+  }
+  return sound;
+}
+
+void UnloadSound(Sound sound) {
+  if (sound.stream.buffer != NULL) {
+    Mix_FreeChunk((Mix_Chunk *)sound.stream.buffer);
+  }
+}
+
+void PlaySound(Sound sound) {
+  if (sound.stream.buffer == NULL)
+    return;
+  Mix_PlayChannel(-1, (Mix_Chunk *)sound.stream.buffer, 0);
+}
+
+void StopSound(Sound sound) {
+  /*
+   * SDL_mixer doesn't track which channel a chunk is playing on.
+   * A proper port would map chunks to channels; we halt all as fallback.
+   */
+  (void)sound;
+  Mix_HaltChannel(-1);
+}
+
+void PauseSound(Sound sound) {
+  (void)sound;
+  Mix_Pause(-1);
+}
+void ResumeSound(Sound sound) {
+  (void)sound;
+  Mix_Resume(-1);
+}
+
+bool IsSoundPlaying(Sound sound) {
+  (void)sound;
+  return Mix_Playing(-1) > 0;
+}
+
+void SetSoundVolume(Sound sound, float volume) {
+  if (sound.stream.buffer == NULL)
+    return;
+  if (volume < 0.0f)
+    volume = 0.0f;
+  if (volume > 1.0f)
+    volume = 1.0f;
+
+  Mix_VolumeChunk((Mix_Chunk *)sound.stream.buffer,
+                  (int)(volume * masterVolume * MIX_MAX_VOLUME));
+}
+
+/* ======================================================================== */
+/*  Music (long streaming tracks — Mix_Music)                               */
+/* ======================================================================== */
+
+Music LoadMusicStream(const char *fileName) {
+  Music music;
+  memset(&music, 0, sizeof(music));
+  if (!audioInitialized)
+    return music;
+
+  Mix_Music *mus = Mix_LoadMUS(fileName);
+  if (mus != NULL) {
+    music.ctxData = (void *)mus;
+    music.looping = true;
+  }
+  return music;
+}
+
+void UnloadMusicStream(Music music) {
+  if (music.ctxData != NULL) {
+    Mix_FreeMusic((Mix_Music *)music.ctxData);
+  }
+}
+
+void PlayMusicStream(Music music) {
+  if (music.ctxData == NULL)
+    return;
+  Mix_PlayMusic((Mix_Music *)music.ctxData, music.looping ? -1 : 1);
+}
+
+bool IsMusicStreamPlaying(Music music) {
+  (void)music;
+  return Mix_PlayingMusic() == 1;
+}
+
+void UpdateMusicStream(Music music) {
+  /*
+   * SDL_mixer streams music on a background thread, so there is nothing
+   * to feed here.  We keep the function for Raylib API compatibility.
+   */
+  (void)music;
+}
+
+void StopMusicStream(Music music) {
+  (void)music;
+  Mix_HaltMusic();
+}
+void PauseMusicStream(Music music) {
+  (void)music;
+  Mix_PauseMusic();
+}
+void ResumeMusicStream(Music music) {
+  (void)music;
+  Mix_ResumeMusic();
+}
+
+void SetMusicVolume(Music music, float volume) {
+  (void)music;
+  if (volume < 0.0f)
+    volume = 0.0f;
+  if (volume > 1.0f)
+    volume = 1.0f;
+  Mix_VolumeMusic((int)(volume * masterVolume * MIX_MAX_VOLUME));
+}
+
+float GetMusicTimeLength(Music music) {
+  (void)music;
+  /* SDL_mixer 1.2 doesn't expose total duration easily.
+     Return 0 as a safe fallback. */
+  return 0.0f;
+}
+
+float GetMusicTimePlayed(Music music) {
+  (void)music;
+  /* SDL_mixer 1.2 doesn't expose current playback position.
+     Return 0 as a safe fallback. */
+  return 0.0f;
+}
+
+
+src/raymath.cpp: 
+/*
+ * raymath.cpp — Vector2, Vector3, Matrix, and Quaternion math.
+ */
+
+#include "raymath.h"
+
+#include <math.h>
+
+/* ======================================================================== */
+/*  Vector2                                                                 */
+/* ======================================================================== */
+
+Vector2 Vector2Zero(void) {
+  Vector2 r = {0.0f, 0.0f};
+  return r;
+}
+Vector2 Vector2One(void) {
+  Vector2 r = {1.0f, 1.0f};
+  return r;
+}
+
+Vector2 Vector2Add(Vector2 v1, Vector2 v2) {
+  Vector2 r = {v1.x + v2.x, v1.y + v2.y};
+  return r;
+}
+
+Vector2 Vector2Subtract(Vector2 v1, Vector2 v2) {
+  Vector2 r = {v1.x - v2.x, v1.y - v2.y};
+  return r;
+}
+
+Vector2 Vector2Scale(Vector2 v, float scale) {
+  Vector2 r = {v.x * scale, v.y * scale};
+  return r;
+}
+
+Vector2 Vector2Multiply(Vector2 v1, Vector2 v2) {
+  Vector2 r = {v1.x * v2.x, v1.y * v2.y};
+  return r;
+}
+
+Vector2 Vector2Negate(Vector2 v) {
+  Vector2 r = {-v.x, -v.y};
+  return r;
+}
+
+Vector2 Vector2Divide(Vector2 v1, Vector2 v2) {
+  Vector2 r = {v1.x / v2.x, v1.y / v2.y};
+  return r;
+}
+
+float Vector2Length(Vector2 v) {
+  return (float)sqrt((double)(v.x * v.x + v.y * v.y));
+}
+
+float Vector2LengthSqr(Vector2 v) { return v.x * v.x + v.y * v.y; }
+
+float Vector2Distance(Vector2 v1, Vector2 v2) {
+  float dx = v1.x - v2.x;
+  float dy = v1.y - v2.y;
+  return (float)sqrt((double)(dx * dx + dy * dy));
+}
+
+float Vector2DistanceSqr(Vector2 v1, Vector2 v2) {
+  float dx = v1.x - v2.x;
+  float dy = v1.y - v2.y;
+  return dx * dx + dy * dy;
+}
+
+float Vector2Angle(Vector2 v1, Vector2 v2) {
+  float dot = v1.x * v2.x + v1.y * v2.y;
+  float cross = v1.x * v2.y - v1.y * v2.x;
+  return (float)atan2((double)cross, (double)dot);
+}
+
+Vector2 Vector2Normalize(Vector2 v) {
+  Vector2 r = {0.0f, 0.0f};
+  float len = Vector2Length(v);
+  if (len > EPSILON) {
+    float inv = 1.0f / len;
+    r.x = v.x * inv;
+    r.y = v.y * inv;
+  }
+  return r;
+}
+
+float Vector2DotProduct(Vector2 v1, Vector2 v2) {
+  return v1.x * v2.x + v1.y * v2.y;
+}
+
+float Vector2CrossProduct(Vector2 v1, Vector2 v2) {
+  return v1.x * v2.y - v1.y * v2.x;
+}
+
+Vector2 Vector2Lerp(Vector2 v1, Vector2 v2, float amount) {
+  Vector2 r;
+  r.x = v1.x + (v2.x - v1.x) * amount;
+  r.y = v1.y + (v2.y - v1.y) * amount;
+  return r;
+}
+
+Vector2 Vector2Rotate(Vector2 v, float angle) {
+  float c = cosf(angle);
+  float s = sinf(angle);
+  Vector2 r;
+  r.x = v.x * c - v.y * s;
+  r.y = v.x * s + v.y * c;
+  return r;
+}
+
+Vector2 Vector2Clamp(Vector2 v, Vector2 min, Vector2 max) {
+  Vector2 r;
+  r.x = (v.x < min.x) ? min.x : (v.x > max.x) ? max.x : v.x;
+  r.y = (v.y < min.y) ? min.y : (v.y > max.y) ? max.y : v.y;
+  return r;
+}
+
+Vector2 Vector2ClampValue(Vector2 v, float min, float max) {
+  float len = Vector2Length(v);
+  if (len < EPSILON)
+    return v;
+  if (len < min)
+    return Vector2Scale(Vector2Normalize(v), min);
+  if (len > max)
+    return Vector2Scale(Vector2Normalize(v), max);
+  return v;
+}
+
+bool Vector2Equals(Vector2 p, Vector2 q) {
+  return (fabsf(p.x - q.x) <= EPSILON) && (fabsf(p.y - q.y) <= EPSILON);
+}
+
+/* ======================================================================== */
+/*  Vector3 (minimal — for type compatibility)                              */
+/* ======================================================================== */
+
+Vector3 Vector3Zero(void) {
+  Vector3 r = {0, 0, 0};
+  return r;
+}
+Vector3 Vector3One(void) {
+  Vector3 r = {1, 1, 1};
+  return r;
+}
+
+Vector3 Vector3Add(Vector3 v1, Vector3 v2) {
+  Vector3 r = {v1.x + v2.x, v1.y + v2.y, v1.z + v2.z};
+  return r;
+}
+
+Vector3 Vector3Subtract(Vector3 v1, Vector3 v2) {
+  Vector3 r = {v1.x - v2.x, v1.y - v2.y, v1.z - v2.z};
+  return r;
+}
+
+Vector3 Vector3Scale(Vector3 v, float scalar) {
+  Vector3 r = {v.x * scalar, v.y * scalar, v.z * scalar};
+  return r;
+}
+
+float Vector3Length(Vector3 v) {
+  return (float)sqrt((double)(v.x * v.x + v.y * v.y + v.z * v.z));
+}
+
+Vector3 Vector3Normalize(Vector3 v) {
+  Vector3 r = {0, 0, 0};
+  float len = Vector3Length(v);
+  if (len > EPSILON) {
+    float inv = 1.0f / len;
+    r.x = v.x * inv;
+    r.y = v.y * inv;
+    r.z = v.z * inv;
+  }
+  return r;
+}
+
+float Vector3DotProduct(Vector3 v1, Vector3 v2) {
+  return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+}
+
+Vector3 Vector3CrossProduct(Vector3 v1, Vector3 v2) {
+  Vector3 r;
+  r.x = v1.y * v2.z - v1.z * v2.y;
+  r.y = v1.z * v2.x - v1.x * v2.z;
+  r.z = v1.x * v2.y - v1.y * v2.x;
+  return r;
+}
+
+/* ======================================================================== */
+/*  Matrix (minimal)                                                        */
+/* ======================================================================== */
+
+Matrix MatrixIdentity(void) {
+  Matrix r;
+  r.m0 = 1;
+  r.m4 = 0;
+  r.m8 = 0;
+  r.m12 = 0;
+  r.m1 = 0;
+  r.m5 = 1;
+  r.m9 = 0;
+  r.m13 = 0;
+  r.m2 = 0;
+  r.m6 = 0;
+  r.m10 = 1;
+  r.m14 = 0;
+  r.m3 = 0;
+  r.m7 = 0;
+  r.m11 = 0;
+  r.m15 = 1;
+  return r;
+}
+
+Matrix MatrixMultiply(Matrix left, Matrix right) {
+  Matrix r;
+  r.m0 = left.m0 * right.m0 + left.m1 * right.m4 + left.m2 * right.m8 +
+         left.m3 * right.m12;
+  r.m1 = left.m0 * right.m1 + left.m1 * right.m5 + left.m2 * right.m9 +
+         left.m3 * right.m13;
+  r.m2 = left.m0 * right.m2 + left.m1 * right.m6 + left.m2 * right.m10 +
+         left.m3 * right.m14;
+  r.m3 = left.m0 * right.m3 + left.m1 * right.m7 + left.m2 * right.m11 +
+         left.m3 * right.m15;
+  r.m4 = left.m4 * right.m0 + left.m5 * right.m4 + left.m6 * right.m8 +
+         left.m7 * right.m12;
+  r.m5 = left.m4 * right.m1 + left.m5 * right.m5 + left.m6 * right.m9 +
+         left.m7 * right.m13;
+  r.m6 = left.m4 * right.m2 + left.m5 * right.m6 + left.m6 * right.m10 +
+         left.m7 * right.m14;
+  r.m7 = left.m4 * right.m3 + left.m5 * right.m7 + left.m6 * right.m11 +
+         left.m7 * right.m15;
+  r.m8 = left.m8 * right.m0 + left.m9 * right.m4 + left.m10 * right.m8 +
+         left.m11 * right.m12;
+  r.m9 = left.m8 * right.m1 + left.m9 * right.m5 + left.m10 * right.m9 +
+         left.m11 * right.m13;
+  r.m10 = left.m8 * right.m2 + left.m9 * right.m6 + left.m10 * right.m10 +
+          left.m11 * right.m14;
+  r.m11 = left.m8 * right.m3 + left.m9 * right.m7 + left.m10 * right.m11 +
+          left.m11 * right.m15;
+  r.m12 = left.m12 * right.m0 + left.m13 * right.m4 + left.m14 * right.m8 +
+          left.m15 * right.m12;
+  r.m13 = left.m12 * right.m1 + left.m13 * right.m5 + left.m14 * right.m9 +
+          left.m15 * right.m13;
+  r.m14 = left.m12 * right.m2 + left.m13 * right.m6 + left.m14 * right.m10 +
+          left.m15 * right.m14;
+  r.m15 = left.m12 * right.m3 + left.m13 * right.m7 + left.m14 * right.m11 +
+          left.m15 * right.m15;
+  return r;
+}
+
+/* ======================================================================== */
+/*  Quaternion (minimal)                                                    */
+/* ======================================================================== */
+
+Quaternion QuaternionIdentity(void) {
+  Quaternion q = {0.0f, 0.0f, 0.0f, 1.0f};
+  return q;
+}
+
+
+src/rcolors.cpp: 
+/*
+ * rcolors.cpp — Color utility functions.
+ */
+
+#include "raylib.h"
+
+bool ColorIsEqual(Color col1, Color col2) {
+  return (col1.r == col2.r && col1.g == col2.g && col1.b == col2.b &&
+          col1.a == col2.a);
+}
+
+Color Fade(Color color, float alpha) {
+  if (alpha < 0.0f)
+    alpha = 0.0f;
+  if (alpha > 1.0f)
+    alpha = 1.0f;
+
+  Color result;
+  result.r = color.r;
+  result.g = color.g;
+  result.b = color.b;
+  result.a = (unsigned char)((float)color.a * alpha);
+  return result;
+}
+
+Color ColorAlpha(Color color, float alpha) { return Fade(color, alpha); }
+
+int ColorToInt(Color color) {
+  return ((int)color.r << 24) | ((int)color.g << 16) | ((int)color.b << 8) |
+         (int)color.a;
+}
+
+Color GetColor(unsigned int hexValue) {
+  Color color;
+  color.r = (unsigned char)((hexValue >> 24) & 0xFF);
+  color.g = (unsigned char)((hexValue >> 16) & 0xFF);
+  color.b = (unsigned char)((hexValue >> 8) & 0xFF);
+  color.a = (unsigned char)(hexValue & 0xFF);
+  return color;
+}
+
+
+src/rtext.cpp: 
+/*
+ * rtext.cpp — Font loading, text drawing, and string utilities.
+ *
+ * Merges the functionality of the old text.cpp and rtext.cpp into a single
+ * translation unit, backed by SDL_ttf 2.0.
+ */
+
+#include "raylib.h"
+
+#include <SDL.h>
+#include <SDL_ttf.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+/* ======================================================================== */
+/* Globals & Externs                                                       */
+/* ======================================================================== */
+
+/* From core.cpp */
+extern SDL_Surface *rl_activeSurface;
+
+/* Owned by this file, exported for textures.cpp (ImageText) */
+TTF_Font *rl_defaultFont = NULL;
+
+/* ======================================================================== */
+/* Internal Engine Hooks                                                   */
+/* ======================================================================== */
+
+void InitTextSystem(void) {
+  if (TTF_Init() == -1) {
+    fprintf(stderr, "TTF_Init failed: %s\n", TTF_GetError());
+    return;
+  }
+
+  /*
+   * Raylib normally embeds its default font. For a retro port, it's
+   * safer/easier to require a physical file. Place "default.ttf" next to your
+   * executable.
+   */
+  rl_defaultFont = TTF_OpenFont("default.ttf", 20);
+  if (!rl_defaultFont) {
+    fprintf(stderr, "Warning: Could not load default.ttf: %s\n",
+            TTF_GetError());
+  }
+}
+
+void CloseTextSystem(void) {
+  if (rl_defaultFont) {
+    TTF_CloseFont(rl_defaultFont);
+    rl_defaultFont = NULL;
+  }
+  TTF_Quit();
+}
+
+/* ======================================================================== */
+/* Basic Text Drawing                                                      */
+/* ======================================================================== */
+
+void DrawText(const char *text, int posX, int posY, int fontSize, Color color) {
+  if (!rl_defaultFont || !rl_activeSurface || !text || text[0] == '\0')
+    return;
+
+  /* * SDL_ttf locks the font size at load time. To support dynamic sizes
+   * accurately in SDL 1.2, users must use LoadFontEx and DrawTextEx.
+   */
+  (void)fontSize;
+
+  /* SDL 1.2's SDL_Color does not use an alpha channel for solid rendering */
+  SDL_Color sdlColor = {color.r, color.g, color.b, 0};
+
+  /* TTF_RenderText_Solid is the fastest method (no alpha blending overhead) */
+  SDL_Surface *textSurface =
+      TTF_RenderText_Solid(rl_defaultFont, text, sdlColor);
+
+  if (textSurface) {
+    SDL_Rect destRect = {(Sint16)posX, (Sint16)posY, 0, 0};
+    SDL_BlitSurface(textSurface, NULL, rl_activeSurface, &destRect);
+    SDL_FreeSurface(textSurface);
+  }
+}
+
+void DrawTextEx(Font font, const char *text, Vector2 position, float fontSize,
+                float spacing, Color tint) {
+  if (text == NULL || text[0] == '\0' || rl_activeSurface == NULL)
+    return;
+
+  TTF_Font *ttf = (TTF_Font *)(uintptr_t)font.texture.id;
+  if (ttf == NULL)
+    ttf = rl_defaultFont;
+  if (ttf == NULL)
+    return;
+
+  (void)fontSize; /* SDL_ttf locks size at load time */
+  (void)spacing;  /* SDL_ttf handles kerning internally via font files */
+
+  SDL_Color sdlColor = {tint.r, tint.g, tint.b, 0};
+
+  SDL_Surface *textSurface = TTF_RenderText_Solid(ttf, text, sdlColor);
+  if (textSurface) {
+    SDL_Rect destRect = {(Sint16)position.x, (Sint16)position.y, 0, 0};
+    SDL_BlitSurface(textSurface, NULL, rl_activeSurface, &destRect);
+    SDL_FreeSurface(textSurface);
+  }
+}
+
+/* ======================================================================== */
+/* Font Loading & Management                                               */
+/* ======================================================================== */
+
+Font GetFontDefault(void) {
+  Font font;
+  memset(&font, 0, sizeof(font));
+  font.baseSize = 20;
+  font.texture.id = (unsigned int)(uintptr_t)rl_defaultFont;
+  return font;
+}
+
+Font LoadFont(const char *fileName) {
+  Font font;
+  memset(&font, 0, sizeof(font));
+  font.baseSize = 32; /* Raylib default size for LoadFont */
+
+  TTF_Font *ttf = TTF_OpenFont(fileName, font.baseSize);
+  if (ttf != NULL) {
+    font.texture.id = (unsigned int)(uintptr_t)ttf;
+  }
+  return font;
+}
+
+Font LoadFontEx(const char *fileName, int fontSize, int *codepoints,
+                int codepointCount) {
+  Font font;
+  memset(&font, 0, sizeof(font));
+  font.baseSize = fontSize;
+
+  (void)codepoints;
+  (void)codepointCount;
+
+  TTF_Font *ttf = TTF_OpenFont(fileName, fontSize);
+  if (ttf != NULL) {
+    font.texture.id = (unsigned int)(uintptr_t)ttf;
+  }
+  return font;
+}
+
+void UnloadFont(Font font) {
+  TTF_Font *ttf = (TTF_Font *)(uintptr_t)font.texture.id;
+  if (ttf != NULL && ttf != rl_defaultFont) {
+    TTF_CloseFont(ttf);
+  }
+}
+
+bool IsFontValid(Font font) { return (font.texture.id != 0); }
+
+/* ======================================================================== */
+/* Text Measurement                                                        */
+/* ======================================================================== */
+
+int MeasureText(const char *text, int fontSize) {
+  if (text == NULL || rl_defaultFont == NULL)
+    return 0;
+
+  (void)fontSize;
+  int w = 0, h = 0;
+  if (TTF_SizeText(rl_defaultFont, text, &w, &h) == 0) {
+    return w;
+  }
+  return 0;
+}
+
+Vector2 MeasureTextEx(Font font, const char *text, float fontSize,
+                      float spacing) {
+  Vector2 size = {0.0f, 0.0f};
+  if (text == NULL)
+    return size;
+
+  (void)fontSize;
+  (void)spacing;
+
+  TTF_Font *ttf = (TTF_Font *)(uintptr_t)font.texture.id;
+  if (ttf == NULL)
+    ttf = rl_defaultFont;
+  if (ttf == NULL)
+    return size;
+
+  int w = 0, h = 0;
+  if (TTF_SizeText(ttf, text, &w, &h) == 0) {
+    size.x = (float)w;
+    size.y = (float)h;
+  }
+  return size;
+}
+
+/* ======================================================================== */
+/* Text Strings Management                                                 */
+/* ======================================================================== */
+
+unsigned int TextLength(const char *text) {
+  if (text == NULL)
+    return 0;
+  return (unsigned int)strlen(text);
+}
+
+int TextCopy(char *dst, const char *src) {
+  if (dst == NULL || src == NULL)
+    return 0;
+  strcpy(dst, src);
+  return (int)strlen(dst);
+}
+
+bool TextIsEqual(const char *text1, const char *text2) {
+  if (text1 == NULL || text2 == NULL)
+    return false;
+  return (strcmp(text1, text2) == 0);
+}
+
+const char *TextFormat(const char *text, ...) {
+  /* Raylib uses a ring buffer to allow multiple TextFormat calls per frame */
+  static char buffers[4][1024];
+  static int index = 0;
+
+  char *currentBuffer = buffers[index];
+  index = (index + 1) % 4;
+
+  va_list args;
+  va_start(args, text);
+  vsnprintf(currentBuffer, 1024, text, args);
+  va_end(args);
+
+  return currentBuffer;
+}
+
+const char *TextToUpper(const char *text) {
+  static char buffer[1024];
+  int i = 0;
+  if (text == NULL)
+    return "";
+
+  while (text[i] != '\0' && i < 1023) {
+    buffer[i] = (char)toupper((unsigned char)text[i]);
+    i++;
+  }
+  buffer[i] = '\0';
+  return buffer;
+}
+
+const char *TextToLower(const char *text) {
+  static char buffer[1024];
+  int i = 0;
+  if (text == NULL)
+    return "";
+
+  while (text[i] != '\0' && i < 1023) {
+    buffer[i] = (char)tolower((unsigned char)text[i]);
+    i++;
+  }
+  buffer[i] = '\0';
+  return buffer;
+}
+
+src/rtextures.cpp: 
+/*
+ * rtextures.cpp — Image and Texture load, unload, manipulation, and drawing.
+ *
+ * Merges textures.cpp and rtextures.cpp, backed by SDL 1.2 and SDL_image.
+ * Color utility functions have been omitted to prevent ODR violations
+ * (they are handled in rcolors.cpp).
+ */
+
+#include "raylib.h"
+
+#include <SDL.h>
+#include <SDL_image.h>
+#include <SDL_ttf.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* From core.cpp */
+extern SDL_Surface *rl_screen;
+extern SDL_Surface *rl_activeSurface;
+extern int rl_currentBlendMode;
+
+/* From rtext.cpp */
+extern TTF_Font *rl_defaultFont;
+
+extern bool rl_IsCamera2DActive(void);
+extern Camera2D rl_GetCamera2D(void);
+extern Vector2 GetWorldToScreen2D(Vector2 position, Camera2D camera);
+
+/* ======================================================================== */
+/* Image Management (CPU / RAM)                                            */
+/* ======================================================================== */
+
+Image LoadImage(const char *fileName) {
+  Image img;
+  memset(&img, 0, sizeof(img));
+
+  SDL_Surface *surface = IMG_Load(fileName);
+  if (surface) {
+    img.data = (void *)surface;
+    img.width = surface->w;
+    img.height = surface->h;
+    img.mipmaps = 1;
+    img.format = 7; /* UNCOMPRESSED_R8G8B8A8 placeholder */
+  } else {
+    fprintf(stderr, "WARNING: Failed to load image %s: %s\n", fileName,
+            IMG_GetError());
+  }
+  return img;
+}
+
+Image GenImageColor(int width, int height, Color color) {
+  Image img;
+  memset(&img, 0, sizeof(img));
+
+  SDL_Surface *surf =
+      SDL_CreateRGBSurface(SDL_SWSURFACE, width, height, 32, 0x00FF0000,
+                           0x0000FF00, 0x000000FF, 0xFF000000);
+
+  if (surf) {
+    Uint32 clr = SDL_MapRGBA(surf->format, color.r, color.g, color.b, color.a);
+    SDL_FillRect(surf, NULL, clr);
+    img.data = (void *)surf;
+    img.width = width;
+    img.height = height;
+    img.mipmaps = 1;
+    img.format = 7;
+  }
+  return img;
+}
+
+void UnloadImage(Image image) {
+  if (image.data != NULL) {
+    SDL_FreeSurface((SDL_Surface *)image.data);
+  }
+}
+
+Image ImageCopy(Image image) {
+  Image copy;
+  memset(&copy, 0, sizeof(copy));
+  if (image.data == NULL)
+    return copy;
+
+  SDL_Surface *src = (SDL_Surface *)image.data;
+  SDL_Surface *dst = SDL_CreateRGBSurface(
+      src->flags, src->w, src->h, src->format->BitsPerPixel, src->format->Rmask,
+      src->format->Gmask, src->format->Bmask, src->format->Amask);
+
+  if (dst) {
+    SDL_BlitSurface(src, NULL, dst, NULL);
+    copy.data = (void *)dst;
+    copy.width = dst->w;
+    copy.height = dst->h;
+    copy.mipmaps = 1;
+    copy.format = image.format;
+  }
+  return copy;
+}
+
+void ImageClearBackground(Image *dst, Color color) {
+  if (!dst || !dst->data)
+    return;
+  SDL_Surface *surf = (SDL_Surface *)dst->data;
+  Uint32 clr = SDL_MapRGBA(surf->format, color.r, color.g, color.b, color.a);
+  SDL_FillRect(surf, NULL, clr);
+}
+
+void ImageDraw(Image *dst, Image src, Rectangle srcRec, Rectangle dstRec,
+               Color tint) {
+  if (!dst || !dst->data || !src.data)
+    return;
+  (void)tint; /* No software tinting for perf on retro platforms */
+
+  SDL_Surface *dSurf = (SDL_Surface *)dst->data;
+  SDL_Surface *sSurf = (SDL_Surface *)src.data;
+
+  SDL_Rect sRect = {(Sint16)srcRec.x, (Sint16)srcRec.y, (Uint16)srcRec.width,
+                    (Uint16)srcRec.height};
+  SDL_Rect dRect = {(Sint16)dstRec.x, (Sint16)dstRec.y, (Uint16)dstRec.width,
+                    (Uint16)dstRec.height};
+
+  if ((int)srcRec.width == (int)dstRec.width &&
+      (int)srcRec.height == (int)dstRec.height) {
+    SDL_BlitSurface(sSurf, &sRect, dSurf, &dRect);
+  } else {
+    SDL_SoftStretch(sSurf, &sRect, dSurf, &dRect);
+  }
+}
+
+void ImageFlipVertical(Image *image) {
+  if (!image || !image->data)
+    return;
+  SDL_Surface *s = (SDL_Surface *)image->data;
+
+  SDL_LockSurface(s);
+  int pitch = s->pitch;
+  char *temp = (char *)malloc(pitch);
+  char *pixels = (char *)s->pixels;
+
+  for (int i = 0; i < s->h / 2; ++i) {
+    char *row1 = pixels + i * pitch;
+    char *row2 = pixels + (s->h - i - 1) * pitch;
+    memcpy(temp, row1, pitch);
+    memcpy(row1, row2, pitch);
+    memcpy(row2, temp, pitch);
+  }
+  free(temp);
+  SDL_UnlockSurface(s);
+}
+
+void ImageFlipHorizontal(Image *image) {
+  if (!image || !image->data)
+    return;
+  SDL_Surface *s = (SDL_Surface *)image->data;
+  int bpp = s->format->BytesPerPixel;
+
+  SDL_LockSurface(s);
+  for (int y = 0; y < s->h; y++) {
+    Uint8 *row = (Uint8 *)s->pixels + y * s->pitch;
+    for (int x = 0; x < s->w / 2; x++) {
+      Uint8 *left = row + x * bpp;
+      Uint8 *right = row + (s->w - 1 - x) * bpp;
+      for (int b = 0; b < bpp; b++) {
+        Uint8 tmp = left[b];
+        left[b] = right[b];
+        right[b] = tmp;
+      }
+    }
+  }
+  SDL_UnlockSurface(s);
+}
+
+void ImageResize(Image *image, int newWidth, int newHeight) {
+  if (!image || !image->data)
+    return;
+  SDL_Surface *src = (SDL_Surface *)image->data;
+
+  SDL_Surface *dst = SDL_CreateRGBSurface(
+      src->flags, newWidth, newHeight, src->format->BitsPerPixel,
+      src->format->Rmask, src->format->Gmask, src->format->Bmask,
+      src->format->Amask);
+
+  if (dst) {
+    SDL_Rect sRect = {0, 0, (Uint16)src->w, (Uint16)src->h};
+    SDL_Rect dRect = {0, 0, (Uint16)newWidth, (Uint16)newHeight};
+    SDL_SoftStretch(src, &sRect, dst, &dRect);
+
+    SDL_FreeSurface(src);
+    image->data = (void *)dst;
+    image->width = newWidth;
+    image->height = newHeight;
+  }
+}
+
+Color *LoadImageColors(Image image) {
+  if (!image.data)
+    return NULL;
+  SDL_Surface *s = (SDL_Surface *)image.data;
+  int count = s->w * s->h;
+  Color *colors = (Color *)malloc(count * sizeof(Color));
+  if (!colors)
+    return NULL;
+
+  SDL_LockSurface(s);
+  for (int y = 0; y < s->h; y++) {
+    for (int x = 0; x < s->w; x++) {
+      int bpp = s->format->BytesPerPixel;
+      Uint8 *p = (Uint8 *)s->pixels + y * s->pitch + x * bpp;
+      Uint32 pixel = 0;
+      switch (bpp) {
+      case 1:
+        pixel = *p;
+        break;
+      case 2:
+        pixel = *(Uint16 *)p;
+        break;
+      case 3:
+        if (SDL_BYTEORDER == SDL_BIG_ENDIAN)
+          pixel = (Uint32)p[0] << 16 | (Uint32)p[1] << 8 | (Uint32)p[2];
+        else
+          pixel = (Uint32)p[0] | (Uint32)p[1] << 8 | (Uint32)p[2] << 16;
+        break;
+      case 4:
+        pixel = *(Uint32 *)p;
+        break;
+      }
+      Uint8 r, g, b, a;
+      SDL_GetRGBA(pixel, s->format, &r, &g, &b, &a);
+      int idx = y * s->w + x;
+      colors[idx].r = r;
+      colors[idx].g = g;
+      colors[idx].b = b;
+      colors[idx].a = a;
+    }
+  }
+  SDL_UnlockSurface(s);
+  return colors;
+}
+
+void UnloadImageColors(Color *colors) {
+  if (colors)
+    free(colors);
+}
+
+/* ======================================================================== */
+/* Image-Text (renders text to an Image, not to screen)                    */
+/* ======================================================================== */
+
+Image ImageText(const char *text, int fontSize, Color color) {
+  Image image;
+  memset(&image, 0, sizeof(image));
+  if (text == NULL || rl_defaultFont == NULL)
+    return image;
+
+  (void)fontSize;
+
+  SDL_Color sdlColor = {color.r, color.g, color.b, 0};
+
+  SDL_Surface *textSurf = TTF_RenderText_Solid(rl_defaultFont, text, sdlColor);
+  if (textSurf) {
+    SDL_Surface *optimized = SDL_DisplayFormatAlpha(textSurf);
+    SDL_FreeSurface(textSurf);
+    if (optimized) {
+      image.data = (void *)optimized;
+      image.width = optimized->w;
+      image.height = optimized->h;
+      image.format = 7;
+      image.mipmaps = 1;
+    }
+  }
+  return image;
+}
+
+Image ImageTextEx(Font font, const char *text, float fontSize, float spacing,
+                  Color tint) {
+  Image image;
+  memset(&image, 0, sizeof(image));
+  if (text == NULL)
+    return image;
+
+  (void)fontSize;
+  (void)spacing;
+
+  TTF_Font *ttf = (TTF_Font *)(uintptr_t)font.texture.id;
+  if (ttf == NULL)
+    ttf = rl_defaultFont;
+  if (ttf == NULL)
+    return image;
+
+  SDL_Color sdlColor = {tint.r, tint.g, tint.b, 0};
+
+  SDL_Surface *textSurf = TTF_RenderText_Solid(ttf, text, sdlColor);
+  if (textSurf) {
+    SDL_Surface *optimized = SDL_DisplayFormatAlpha(textSurf);
+    SDL_FreeSurface(textSurf);
+    if (optimized) {
+      image.data = (void *)optimized;
+      image.width = optimized->w;
+      image.height = optimized->h;
+      image.format = 7;
+      image.mipmaps = 1;
+    }
+  }
+  return image;
+}
+
+void ImageDrawText(Image *dst, const char *text, int posX, int posY,
+                   int fontSize, Color color) {
+  if (dst == NULL || dst->data == NULL)
+    return;
+
+  Image textImg = ImageText(text, fontSize, color);
+  if (textImg.data != NULL) {
+    Rectangle srcRec = {0, 0, (float)textImg.width, (float)textImg.height};
+    Rectangle dstRec = {(float)posX, (float)posY, (float)textImg.width,
+                        (float)textImg.height};
+    ImageDraw(dst, textImg, srcRec, dstRec, WHITE);
+    UnloadImage(textImg);
+  }
+}
+
+/* ======================================================================== */
+/* Texture Management (Fake "VRAM" — still CPU surfaces)                   */
+/* ======================================================================== */
+
+Texture2D LoadTexture(const char *fileName) {
+  Texture2D tex;
+  memset(&tex, 0, sizeof(tex));
+
+  SDL_Surface *loaded = IMG_Load(fileName);
+  if (loaded) {
+    SDL_Surface *optimized = SDL_DisplayFormatAlpha(loaded);
+    SDL_FreeSurface(loaded);
+    if (optimized) {
+      tex.id = (unsigned int)(uintptr_t)optimized;
+      tex.width = optimized->w;
+      tex.height = optimized->h;
+      tex.mipmaps = 1;
+    }
+  } else {
+    fprintf(stderr, "WARNING: Failed to load texture %s: %s\n", fileName,
+            IMG_GetError());
+  }
+  return tex;
+}
+
+Texture2D LoadTextureFromImage(Image image) {
+  Texture2D tex;
+  memset(&tex, 0, sizeof(tex));
+  if (image.data == NULL)
+    return tex;
+
+  SDL_Surface *original = (SDL_Surface *)image.data;
+  SDL_Surface *optimized = SDL_DisplayFormatAlpha(original);
+  if (optimized) {
+    tex.id = (unsigned int)(uintptr_t)optimized;
+    tex.width = optimized->w;
+    tex.height = optimized->h;
+    tex.mipmaps = 1;
+  }
+  return tex;
+}
+
+void UnloadTexture(Texture2D texture) {
+  if (texture.id != 0) {
+    SDL_FreeSurface((SDL_Surface *)(uintptr_t)texture.id);
+  }
+}
+
+bool IsTextureValid(Texture2D texture) { return (texture.id != 0); }
+
+void UpdateTexture(Texture2D texture, const void *pixels) {
+  if (texture.id == 0)
+    return;
+  SDL_Surface *surf = (SDL_Surface *)(uintptr_t)texture.id;
+
+  SDL_LockSurface(surf);
+  memcpy(surf->pixels, pixels, surf->pitch * surf->h);
+  SDL_UnlockSurface(surf);
+}
+
+/* ======================================================================== */
+/* Texture Drawing                                                         */
+/* ======================================================================== */
+
+void DrawTexture(Texture2D texture, int posX, int posY, Color tint) {
+  if (texture.id == 0 || rl_activeSurface == NULL)
+    return;
+  (void)tint;
+
+  SDL_Surface *src = (SDL_Surface *)(uintptr_t)texture.id;
+  SDL_Rect destRect = {(Sint16)posX, (Sint16)posY, 0, 0};
+
+  SDL_BlitSurface(src, NULL, rl_activeSurface, &destRect);
+}
+
+void DrawTextureV(Texture2D texture, Vector2 position, Color tint) {
+  DrawTexture(texture, (int)position.x, (int)position.y, tint);
+}
+
+void DrawTextureRec(Texture2D texture, Rectangle source, Vector2 position,
+                    Color tint) {
+  if (texture.id == 0 || rl_activeSurface == NULL)
+    return;
+  (void)tint;
+
+  SDL_Surface *srcSurface = (SDL_Surface *)(uintptr_t)texture.id;
+
+  SDL_Rect srcRect = {(Sint16)source.x, (Sint16)source.y, (Uint16)source.width,
+                      (Uint16)source.height};
+  SDL_Rect destRect = {(Sint16)position.x, (Sint16)position.y, 0, 0};
+
+  SDL_BlitSurface(srcSurface, &srcRect, rl_activeSurface, &destRect);
+}
+
+/* Custom Software Additive Blitter */
+static void SoftwareBlitAdditive(SDL_Surface *src, SDL_Rect *sRect,
+                                 SDL_Surface *dst, SDL_Rect *dRect) {
+  /* Failsafes */
+  if (!src || !dst || !sRect || !dRect)
+    return;
+
+  /* Lock surfaces for direct memory access */
+  if (SDL_MUSTLOCK(src))
+    SDL_LockSurface(src);
+  if (SDL_MUSTLOCK(dst))
+    SDL_LockSurface(dst);
+
+  int srcBpp = src->format->BytesPerPixel;
+  int dstBpp = dst->format->BytesPerPixel;
+
+  /* Loop through every pixel in the rectangle */
+  for (int y = 0; y < sRect->h && (dRect->y + y) < dst->h; y++) {
+    for (int x = 0; x < sRect->w && (dRect->x + x) < dst->w; x++) {
+
+      /* Get source pixel */
+      Uint8 *sPixel = (Uint8 *)src->pixels + ((sRect->y + y) * src->pitch) +
+                      ((sRect->x + x) * srcBpp);
+      Uint32 sColor = (srcBpp == 4)
+                          ? *(Uint32 *)sPixel
+                          : 0; /* Assuming 32-bit textures for simplicity */
+
+      Uint8 sr, sg, sb, sa;
+      SDL_GetRGBA(sColor, src->format, &sr, &sg, &sb, &sa);
+
+      /* Skip fully transparent pixels for performance */
+      if (sa == 0)
+        continue;
+
+      /* Get destination pixel */
+      Uint8 *dPixel = (Uint8 *)dst->pixels + ((dRect->y + y) * dst->pitch) +
+                      ((dRect->x + x) * dstBpp);
+      Uint32 dColor = (dstBpp == 4) ? *(Uint32 *)dPixel : 0;
+
+      Uint8 dr, dg, db, da;
+      SDL_GetRGBA(dColor, dst->format, &dr, &dg, &db, &da);
+
+      /* Additive Math: Add source and destination RGB, factoring in source
+       * Alpha */
+      float alphaMult = (float)sa / 255.0f;
+      int r = dr + (int)(sr * alphaMult);
+      int g = dg + (int)(sg * alphaMult);
+      int b = db + (int)(sb * alphaMult);
+
+      /* Clamp to 255 to prevent overflow (which causes trippy color wrapping)
+       */
+      if (r > 255)
+        r = 255;
+      if (g > 255)
+        g = 255;
+      if (b > 255)
+        b = 255;
+
+      /* Write back to destination */
+      Uint32 finalColor =
+          SDL_MapRGBA(dst->format, (Uint8)r, (Uint8)g, (Uint8)b, da);
+      if (dstBpp == 4)
+        *(Uint32 *)dPixel = finalColor;
+    }
+  }
+
+  if (SDL_MUSTLOCK(dst))
+    SDL_UnlockSurface(dst);
+  if (SDL_MUSTLOCK(src))
+    SDL_UnlockSurface(src);
+}
+
+void DrawTexturePro(Texture2D texture, Rectangle source, Rectangle dest,
+                    Vector2 origin, float rotation, Color tint) {
+  if (texture.id == 0 || !rl_activeSurface)
+    return;
+  (void)rotation; /* SDL 1.2 can't rotate without SDL_gfx */
+  (void)tint;
+
+  SDL_Surface *srcSurf = (SDL_Surface *)(uintptr_t)texture.id;
+
+  SDL_Rect sRect = {(Sint16)source.x, (Sint16)source.y, (Uint16)source.width,
+                    (Uint16)source.height};
+  SDL_Rect dRect = {(Sint16)(dest.x - origin.x), (Sint16)(dest.y - origin.y),
+                    (Uint16)dest.width, (Uint16)dest.height};
+
+  /* Intercept for Custom Blend Modes */
+  if (rl_currentBlendMode == BLEND_ADDITIVE) {
+    SoftwareBlitAdditive(srcSurf, &sRect, rl_activeSurface, &dRect);
+    return;
+  }
+
+  /* Default BLEND_ALPHA behavior */
+  if ((int)source.width == (int)dest.width &&
+      (int)source.height == (int)dest.height) {
+    SDL_BlitSurface(srcSurf, &sRect, rl_activeSurface, &dRect);
+  } else {
+    SDL_SoftStretch(srcSurf, &sRect, rl_activeSurface, &dRect);
+  }
+}
+
+/* ======================================================================== */
+/* RenderTexture Management (Off-screen rendering)                          */
+/* ======================================================================== */
+
+RenderTexture2D LoadRenderTexture(int width, int height) {
+  RenderTexture2D target;
+  memset(&target, 0, sizeof(target));
+
+  /* Create an empty 32-bit RGBA surface to act as our framebuffer */
+  SDL_Surface *surf =
+      SDL_CreateRGBSurface(SDL_SWSURFACE, width, height, 32, 0x00FF0000,
+                           0x0000FF00, 0x000000FF, 0xFF000000);
+  if (surf) {
+    target.id = (unsigned int)(uintptr_t)surf;
+
+    /* Populate the internal texture struct so it can be drawn with
+     * DrawTexture() */
+    target.texture.id = target.id;
+    target.texture.width = width;
+    target.texture.height = height;
+    target.texture.mipmaps = 1;
+    target.texture.format = 7;
+  }
+  return target;
+}
+
+void UnloadRenderTexture(RenderTexture2D target) {
+  if (target.id != 0) {
+    SDL_FreeSurface((SDL_Surface *)(uintptr_t)target.id);
+  }
+}
+
+void BeginTextureMode(RenderTexture2D target) {
+  if (target.id != 0) {
+    /* Swap the global drawing target to our custom surface */
+    rl_activeSurface = (SDL_Surface *)(uintptr_t)target.id;
+  }
+}
+
+void EndTextureMode(void) {
+  /* Restore the global drawing target back to the main window screen */
+  rl_activeSurface = rl_screen;
+}
+
+/* ======================================================================== */
+/* 9-Slice / NPatch Drawing                                                 */
+/* ======================================================================== */
+
+void DrawTextureNPatch(Texture2D texture, NPatchInfo nPatchInfo, Rectangle dest,
+                       Vector2 origin, float rotation, Color tint) {
+  if (texture.id == 0 || !rl_activeSurface)
+    return;
+  (void)rotation; /* SDL 1.2 software rendering cannot rotate */
+  (void)tint;     /* No software tinting for perf */
+
+  SDL_Surface *srcSurf = (SDL_Surface *)(uintptr_t)texture.id;
+
+  /* Base destination coordinates (adjusted for origin) */
+  float dx = dest.x - origin.x;
+  float dy = dest.y - origin.y;
+  float dw = dest.width;
+  float dh = dest.height;
+
+  /* Source rectangle parameters */
+  float sx = nPatchInfo.source.x;
+  float sy = nPatchInfo.source.y;
+  float sw = nPatchInfo.source.width;
+  float sh = nPatchInfo.source.height;
+
+  int left = nPatchInfo.left;
+  int top = nPatchInfo.top;
+  int right = nPatchInfo.right;
+  int bottom = nPatchInfo.bottom;
+
+  /* Override margins based on layout type */
+  if (nPatchInfo.layout == NPATCH_THREE_PATCH_HORIZONTAL) {
+    top = 0;
+    bottom = 0;
+  } else if (nPatchInfo.layout == NPATCH_THREE_PATCH_VERTICAL) {
+    left = 0;
+    right = 0;
+  }
+
+  /* Center dimensions */
+  int srcCenterW = (int)sw - left - right;
+  int srcCenterH = (int)sh - top - bottom;
+  int dstCenterW = (int)dw - left - right;
+  int dstCenterH = (int)dh - top - bottom;
+
+  /* Failsafe: if the destination is too small for the corners, just stretch the
+   * whole thing */
+  if (dstCenterW < 0 || dstCenterH < 0) {
+    SDL_Rect sR = {(Sint16)sx, (Sint16)sy, (Uint16)sw, (Uint16)sh};
+    SDL_Rect dR = {(Sint16)dx, (Sint16)dy, (Uint16)dw, (Uint16)dh};
+    SDL_SoftStretch(srcSurf, &sR, rl_activeSurface, &dR);
+    return;
+  }
+
+  /* Define the 9 Source Rectangles */
+  SDL_Rect sRects[9] = {
+      {(Sint16)sx, (Sint16)sy, (Uint16)left, (Uint16)top}, /* Top-Left */
+      {(Sint16)(sx + left), (Sint16)sy, (Uint16)srcCenterW,
+       (Uint16)top}, /* Top-Center */
+      {(Sint16)(sx + left + srcCenterW), (Sint16)sy, (Uint16)right,
+       (Uint16)top}, /* Top-Right */
+      {(Sint16)sx, (Sint16)(sy + top), (Uint16)left,
+       (Uint16)srcCenterH}, /* Mid-Left */
+      {(Sint16)(sx + left), (Sint16)(sy + top), (Uint16)srcCenterW,
+       (Uint16)srcCenterH}, /* Mid-Center */
+      {(Sint16)(sx + left + srcCenterW), (Sint16)(sy + top), (Uint16)right,
+       (Uint16)srcCenterH}, /* Mid-Right */
+      {(Sint16)sx, (Sint16)(sy + top + srcCenterH), (Uint16)left,
+       (Uint16)bottom}, /* Bot-Left */
+      {(Sint16)(sx + left), (Sint16)(sy + top + srcCenterH), (Uint16)srcCenterW,
+       (Uint16)bottom}, /* Bot-Center */
+      {(Sint16)(sx + left + srcCenterW), (Sint16)(sy + top + srcCenterH),
+       (Uint16)right, (Uint16)bottom} /* Bot-Right */
+  };
+
+  /* Define the 9 Destination Rectangles */
+  SDL_Rect dRects[9] = {
+      {(Sint16)dx, (Sint16)dy, (Uint16)left, (Uint16)top}, /* Top-Left */
+      {(Sint16)(dx + left), (Sint16)dy, (Uint16)dstCenterW,
+       (Uint16)top}, /* Top-Center */
+      {(Sint16)(dx + left + dstCenterW), (Sint16)dy, (Uint16)right,
+       (Uint16)top}, /* Top-Right */
+      {(Sint16)dx, (Sint16)(dy + top), (Uint16)left,
+       (Uint16)dstCenterH}, /* Mid-Left */
+      {(Sint16)(dx + left), (Sint16)(dy + top), (Uint16)dstCenterW,
+       (Uint16)dstCenterH}, /* Mid-Center */
+      {(Sint16)(dx + left + dstCenterW), (Sint16)(dy + top), (Uint16)right,
+       (Uint16)dstCenterH}, /* Mid-Right */
+      {(Sint16)dx, (Sint16)(dy + top + dstCenterH), (Uint16)left,
+       (Uint16)bottom}, /* Bot-Left */
+      {(Sint16)(dx + left), (Sint16)(dy + top + dstCenterH), (Uint16)dstCenterW,
+       (Uint16)bottom}, /* Bot-Center */
+      {(Sint16)(dx + left + dstCenterW), (Sint16)(dy + top + dstCenterH),
+       (Uint16)right, (Uint16)bottom} /* Bot-Right */
+  };
+
+  /* Draw all 9 patches */
+  for (int i = 0; i < 9; i++) {
+    /* Skip rendering if this patch has no width or height */
+    if (sRects[i].w == 0 || sRects[i].h == 0 || dRects[i].w == 0 ||
+        dRects[i].h == 0) {
+      continue;
+    }
+
+    /* Fast blit for corners (no scaling), soft stretch for edges/center */
+    if (sRects[i].w == dRects[i].w && sRects[i].h == dRects[i].h) {
+      SDL_BlitSurface(srcSurf, &sRects[i], rl_activeSurface, &dRects[i]);
+    } else {
+      SDL_SoftStretch(srcSurf, &sRects[i], rl_activeSurface, &dRects[i]);
+    }
+  }
+}
+
+src/shapes.cpp: 
+/*
+ * shapes.cpp — Primitive drawing (pixel, line, rect, circle, triangle, poly)
+ * and collision detection.
+ *
+ * Fully supports Camera2D transformations (translation, rotation, zoom)
+ * rendered entirely via software rasterization.
+ */
+
+#include "raylib.h"
+
+#include <SDL.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* From core.cpp */
+extern SDL_Surface *rl_activeSurface;
+extern bool rl_IsCamera2DActive(void);
+extern Camera2D rl_GetCamera2D(void);
+extern Vector2 GetWorldToScreen2D(Vector2 position, Camera2D camera);
+
+/* ======================================================================== */
+/* Internal Software Rasterizers (Camera-Agnostic)                          */
+/* ======================================================================== */
+
+static void PutPixel(SDL_Surface *surface, int x, int y, Uint32 pixel) {
+  if (x < 0 || y < 0 || x >= surface->w || y >= surface->h)
+    return;
+
+  int bpp = surface->format->BytesPerPixel;
+  Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+
+  switch (bpp) {
+  case 1:
+    *p = (Uint8)pixel;
+    break;
+  case 2:
+    *(Uint16 *)p = (Uint16)pixel;
+    break;
+  case 3:
+    if (SDL_BYTEORDER == SDL_BIG_ENDIAN) {
+      p[0] = (Uint8)((pixel >> 16) & 0xFF);
+      p[1] = (Uint8)((pixel >> 8) & 0xFF);
+      p[2] = (Uint8)(pixel & 0xFF);
+    } else {
+      p[0] = (Uint8)(pixel & 0xFF);
+      p[1] = (Uint8)((pixel >> 8) & 0xFF);
+      p[2] = (Uint8)((pixel >> 16) & 0xFF);
+    }
+    break;
+  case 4:
+    *(Uint32 *)p = pixel;
+    break;
+  }
+}
+
+static void RasterizeTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Uint32 col) {
+  int minX = (int)fminf(v1.x, fminf(v2.x, v3.x));
+  int maxX = (int)fmaxf(v1.x, fmaxf(v2.x, v3.x));
+  int minY = (int)fminf(v1.y, fminf(v2.y, v3.y));
+  int maxY = (int)fmaxf(v1.y, fmaxf(v2.y, v3.y));
+
+  /* Clamp to screen to avoid rendering off-screen memory */
+  if (minX < 0)
+    minX = 0;
+  if (minY < 0)
+    minY = 0;
+  if (maxX >= rl_activeSurface->w)
+    maxX = rl_activeSurface->w - 1;
+  if (maxY >= rl_activeSurface->h)
+    maxY = rl_activeSurface->h - 1;
+
+  if (SDL_MUSTLOCK(rl_activeSurface)) {
+    if (SDL_LockSurface(rl_activeSurface) < 0)
+      return;
+  }
+
+  for (int y = minY; y <= maxY; y++) {
+    for (int x = minX; x <= maxX; x++) {
+      float fx = (float)x;
+      float fy = (float)y;
+
+      /* Half-space / edge function test */
+      float w0 = (v2.x - v1.x) * (fy - v1.y) - (v2.y - v1.y) * (fx - v1.x);
+      float w1 = (v3.x - v2.x) * (fy - v2.y) - (v3.y - v2.y) * (fx - v2.x);
+      float w2 = (v1.x - v3.x) * (fy - v3.y) - (v1.y - v3.y) * (fx - v3.x);
+
+      if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+        PutPixel(rl_activeSurface, x, y, col);
+      }
+    }
+  }
+
+  if (SDL_MUSTLOCK(rl_activeSurface))
+    SDL_UnlockSurface(rl_activeSurface);
+}
+
+/* ======================================================================== */
+/* Pixel                                                                    */
+/* ======================================================================== */
+
+void DrawPixel(int posX, int posY, Color color) {
+  DrawPixelV((Vector2){(float)posX, (float)posY}, color);
+}
+
+void DrawPixelV(Vector2 position, Color color) {
+  if (!rl_activeSurface)
+    return;
+
+  if (rl_IsCamera2DActive()) {
+    position = GetWorldToScreen2D(position, rl_GetCamera2D());
+  }
+
+  Uint32 mapped = SDL_MapRGB(rl_activeSurface->format, color.r, color.g, color.b);
+
+  if (SDL_MUSTLOCK(rl_activeSurface)) {
+    if (SDL_LockSurface(rl_activeSurface) < 0)
+      return;
+  }
+  PutPixel(rl_activeSurface, (int)position.x, (int)position.y, mapped);
+  if (SDL_MUSTLOCK(rl_activeSurface))
+    SDL_UnlockSurface(rl_activeSurface);
+}
+
+/* ======================================================================== */
+/* Line (Bresenham)                                                         */
+/* ======================================================================== */
+
+void DrawLine(int startPosX, int startPosY, int endPosX, int endPosY,
+              Color color) {
+  DrawLineV((Vector2){(float)startPosX, (float)startPosY},
+            (Vector2){(float)endPosX, (float)endPosY}, color);
+}
+
+void DrawLineV(Vector2 startPos, Vector2 endPos, Color color) {
+  if (!rl_activeSurface)
+    return;
+
+  if (rl_IsCamera2DActive()) {
+    Camera2D cam = rl_GetCamera2D();
+    startPos = GetWorldToScreen2D(startPos, cam);
+    endPos = GetWorldToScreen2D(endPos, cam);
+  }
+
+  Uint32 mapped = SDL_MapRGB(rl_activeSurface->format, color.r, color.g, color.b);
+
+  int x0 = (int)startPos.x;
+  int y0 = (int)startPos.y;
+  int x1 = (int)endPos.x;
+  int y1 = (int)endPos.y;
+
+  int dx = abs(x1 - x0);
+  int dy = abs(y1 - y0);
+  int sx = (x0 < x1) ? 1 : -1;
+  int sy = (y0 < y1) ? 1 : -1;
+  int err = dx - dy;
+
+  if (SDL_MUSTLOCK(rl_activeSurface)) {
+    if (SDL_LockSurface(rl_activeSurface) < 0)
+      return;
+  }
+
+  for (;;) {
+    PutPixel(rl_activeSurface, x0, y0, mapped);
+    if (x0 == x1 && y0 == y1)
+      break;
+    int e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+
+  if (SDL_MUSTLOCK(rl_activeSurface))
+    SDL_UnlockSurface(rl_activeSurface);
+}
+
+void DrawLineEx(Vector2 startPos, Vector2 endPos, float thick, Color color) {
+  if (thick <= 1.0f) {
+    DrawLineV(startPos, endPos, color);
+    return;
+  }
+
+  /* Compute perpendicular offset for thickness in World Space */
+  float dx = endPos.x - startPos.x;
+  float dy = endPos.y - startPos.y;
+  float len = sqrtf(dx * dx + dy * dy);
+  if (len < 0.001f)
+    return;
+
+  float nx = -dy / len * thick * 0.5f;
+  float ny = dx / len * thick * 0.5f;
+
+  Vector2 v1 = {startPos.x + nx, startPos.y + ny};
+  Vector2 v2 = {startPos.x - nx, startPos.y - ny};
+  Vector2 v3 = {endPos.x - nx, endPos.y - ny};
+  Vector2 v4 = {endPos.x + nx, endPos.y + ny};
+
+  /* DrawTriangle inherently handles the Camera translation/zoom for us */
+  DrawTriangle(v1, v2, v3, color);
+  DrawTriangle(v1, v3, v4, color);
+}
+
+/* ======================================================================== */
+/* Rectangle                                                                */
+/* ======================================================================== */
+
+void DrawRectangle(int posX, int posY, int width, int height, Color color) {
+  if (!rl_activeSurface)
+    return;
+  Uint32 mapped = SDL_MapRGB(rl_activeSurface->format, color.r, color.g, color.b);
+
+  if (rl_IsCamera2DActive()) {
+    Camera2D cam = rl_GetCamera2D();
+
+    /* If camera is rotated, rectangle becomes a polygon. Draw via triangles. */
+    if (cam.rotation != 0.0f) {
+      Vector2 tl = GetWorldToScreen2D((Vector2){(float)posX, (float)posY}, cam);
+      Vector2 tr =
+          GetWorldToScreen2D((Vector2){(float)posX + width, (float)posY}, cam);
+      Vector2 bl =
+          GetWorldToScreen2D((Vector2){(float)posX, (float)posY + height}, cam);
+      Vector2 br = GetWorldToScreen2D(
+          (Vector2){(float)posX + width, (float)posY + height}, cam);
+
+      RasterizeTriangle(tl, bl, tr, mapped);
+      RasterizeTriangle(tr, bl, br, mapped);
+      return;
+    }
+
+    /* Fast path for non-rotated camera */
+    Vector2 screenPos =
+        GetWorldToScreen2D((Vector2){(float)posX, (float)posY}, cam);
+    SDL_Rect rect = {(Sint16)screenPos.x, (Sint16)screenPos.y,
+                     (Uint16)(width * cam.zoom), (Uint16)(height * cam.zoom)};
+    SDL_FillRect(rl_activeSurface, &rect, mapped);
+  } else {
+    /* Fast path: No camera */
+    SDL_Rect rect = {(Sint16)posX, (Sint16)posY, (Uint16)width, (Uint16)height};
+    SDL_FillRect(rl_activeSurface, &rect, mapped);
+  }
+}
+
+void DrawRectangleV(Vector2 position, Vector2 size, Color color) {
+  DrawRectangle((int)position.x, (int)position.y, (int)size.x, (int)size.y,
+                color);
+}
+
+void DrawRectangleRec(Rectangle rec, Color color) {
+  DrawRectangle((int)rec.x, (int)rec.y, (int)rec.width, (int)rec.height, color);
+}
+
+void DrawRectangleLines(int posX, int posY, int width, int height,
+                        Color color) {
+  /* Passing to DrawRectangle automatically handles Camera Transforms */
+  DrawRectangle(posX, posY, width, 1, color);              /* Top    */
+  DrawRectangle(posX, posY + height - 1, width, 1, color); /* Bottom */
+  DrawRectangle(posX, posY, 1, height, color);             /* Left   */
+  DrawRectangle(posX + width - 1, posY, 1, height, color); /* Right  */
+}
+
+void DrawRectangleLinesEx(Rectangle rec, float lineThick, Color color) {
+  int t = (int)lineThick;
+  if (t < 1)
+    t = 1;
+
+  int x = (int)rec.x;
+  int y = (int)rec.y;
+  int w = (int)rec.width;
+  int h = (int)rec.height;
+
+  DrawRectangle(x, y, w, t, color);                     /* Top    */
+  DrawRectangle(x, y + h - t, w, t, color);             /* Bottom */
+  DrawRectangle(x, y + t, t, h - 2 * t, color);         /* Left   */
+  DrawRectangle(x + w - t, y + t, t, h - 2 * t, color); /* Right  */
+}
+
+void DrawRectangleGradientV(int posX, int posY, int width, int height,
+                            Color top, Color bottom) {
+  if (height <= 0)
+    return;
+  for (int y = 0; y < height; y++) {
+    float t = (float)y / (float)height;
+    Color c;
+    c.r = (unsigned char)(top.r + (bottom.r - top.r) * t);
+    c.g = (unsigned char)(top.g + (bottom.g - top.g) * t);
+    c.b = (unsigned char)(top.b + (bottom.b - top.b) * t);
+    c.a = 255;
+    DrawRectangle(posX, posY + y, width, 1, c);
+  }
+}
+
+void DrawRectangleGradientH(int posX, int posY, int width, int height,
+                            Color left, Color right) {
+  if (width <= 0)
+    return;
+  for (int x = 0; x < width; x++) {
+    float t = (float)x / (float)width;
+    Color c;
+    c.r = (unsigned char)(left.r + (right.r - left.r) * t);
+    c.g = (unsigned char)(left.g + (right.g - left.g) * t);
+    c.b = (unsigned char)(left.b + (right.b - left.b) * t);
+    c.a = 255;
+    DrawRectangle(posX + x, posY, 1, height, c);
+  }
+}
+
+void DrawRectangleRounded(Rectangle rec, float roundness, int segments,
+                          Color color) {
+  (void)roundness;
+  (void)segments;
+  DrawRectangleRec(rec, color); /* Fallback: no rounding on SDL 1.2 */
+}
+
+/* ======================================================================== */
+/* Circle (Midpoint algorithm)                                              */
+/* ======================================================================== */
+
+void DrawCircle(int centerX, int centerY, float radius, Color color) {
+  DrawCircleV((Vector2){(float)centerX, (float)centerY}, radius, color);
+}
+
+void DrawCircleV(Vector2 center, float radius, Color color) {
+  if (!rl_activeSurface)
+    return;
+
+  if (rl_IsCamera2DActive()) {
+    Camera2D cam = rl_GetCamera2D();
+    center = GetWorldToScreen2D(center, cam);
+    radius *= cam.zoom;
+  }
+
+  Uint32 mapped = SDL_MapRGB(rl_activeSurface->format, color.r, color.g, color.b);
+  int r = (int)radius;
+  int cx = (int)center.x;
+  int cy = (int)center.y;
+
+  if (SDL_MUSTLOCK(rl_activeSurface)) {
+    if (SDL_LockSurface(rl_activeSurface) < 0)
+      return;
+  }
+
+  int x = 0;
+  int y = r;
+  int d = 1 - r;
+
+  while (x <= y) {
+    for (int i = cx - y; i <= cx + y; i++) {
+      PutPixel(rl_activeSurface, i, cy + x, mapped);
+      PutPixel(rl_activeSurface, i, cy - x, mapped);
+    }
+    for (int i = cx - x; i <= cx + x; i++) {
+      PutPixel(rl_activeSurface, i, cy + y, mapped);
+      PutPixel(rl_activeSurface, i, cy - y, mapped);
+    }
+
+    if (d < 0) {
+      d += 2 * x + 3;
+    } else {
+      d += 2 * (x - y) + 5;
+      y--;
+    }
+    x++;
+  }
+
+  if (SDL_MUSTLOCK(rl_activeSurface))
+    SDL_UnlockSurface(rl_activeSurface);
+}
+
+void DrawCircleLines(int centerX, int centerY, float radius, Color color) {
+  if (!rl_activeSurface)
+    return;
+
+  Vector2 center = {(float)centerX, (float)centerY};
+  if (rl_IsCamera2DActive()) {
+    Camera2D cam = rl_GetCamera2D();
+    center = GetWorldToScreen2D(center, cam);
+    radius *= cam.zoom;
+  }
+
+  Uint32 mapped = SDL_MapRGB(rl_activeSurface->format, color.r, color.g, color.b);
+  int r = (int)radius;
+  int cx = (int)center.x;
+  int cy = (int)center.y;
+
+  int x = 0;
+  int y = r;
+  int d = 1 - r;
+
+  if (SDL_MUSTLOCK(rl_activeSurface)) {
+    if (SDL_LockSurface(rl_activeSurface) < 0)
+      return;
+  }
+
+  while (x <= y) {
+    PutPixel(rl_activeSurface, cx + x, cy + y, mapped);
+    PutPixel(rl_activeSurface, cx - x, cy + y, mapped);
+    PutPixel(rl_activeSurface, cx + x, cy - y, mapped);
+    PutPixel(rl_activeSurface, cx - x, cy - y, mapped);
+    PutPixel(rl_activeSurface, cx + y, cy + x, mapped);
+    PutPixel(rl_activeSurface, cx - y, cy + x, mapped);
+    PutPixel(rl_activeSurface, cx + y, cy - x, mapped);
+    PutPixel(rl_activeSurface, cx - y, cy - x, mapped);
+
+    if (d < 0) {
+      d += 2 * x + 3;
+    } else {
+      d += 2 * (x - y) + 5;
+      y--;
+    }
+    x++;
+  }
+
+  if (SDL_MUSTLOCK(rl_activeSurface))
+    SDL_UnlockSurface(rl_activeSurface);
+}
+
+/* ======================================================================== */
+/* Triangle                                                                 */
+/* ======================================================================== */
+
+void DrawTriangle(Vector2 v1, Vector2 v2, Vector2 v3, Color color) {
+  if (!rl_activeSurface)
+    return;
+
+  if (rl_IsCamera2DActive()) {
+    Camera2D cam = rl_GetCamera2D();
+    v1 = GetWorldToScreen2D(v1, cam);
+    v2 = GetWorldToScreen2D(v2, cam);
+    v3 = GetWorldToScreen2D(v3, cam);
+  }
+
+  Uint32 col = SDL_MapRGB(rl_activeSurface->format, color.r, color.g, color.b);
+  RasterizeTriangle(v1, v2, v3, col);
+}
+
+void DrawTriangleLines(Vector2 v1, Vector2 v2, Vector2 v3, Color color) {
+  /* DrawLineV handles the camera transformations */
+  DrawLineV(v1, v2, color);
+  DrawLineV(v2, v3, color);
+  DrawLineV(v3, v1, color);
+}
+
+/* ======================================================================== */
+/* Polygon                                                                  */
+/* ======================================================================== */
+
+void DrawPoly(Vector2 center, int sides, float radius, float rotation,
+              Color color) {
+  if (sides < 3)
+    return;
+  float step = 360.0f / (float)sides;
+
+  for (int i = 0; i < sides; i++) {
+    float angle1 = (rotation + i * step) * DEG2RAD;
+    float angle2 = (rotation + (i + 1) * step) * DEG2RAD;
+
+    Vector2 v2 = {center.x + cosf(angle1) * radius,
+                  center.y + sinf(angle1) * radius};
+    Vector2 v3 = {center.x + cosf(angle2) * radius,
+                  center.y + sinf(angle2) * radius};
+
+    /* DrawTriangle inherently handles the Camera translation/zoom for us */
+    DrawTriangle(center, v2, v3, color);
+  }
+}
+
+void DrawPolyLines(Vector2 center, int sides, float radius, float rotation,
+                   Color color) {
+  if (sides < 3)
+    return;
+  float step = 360.0f / (float)sides;
+
+  for (int i = 0; i < sides; i++) {
+    float angle1 = (rotation + i * step) * DEG2RAD;
+    float angle2 = (rotation + (i + 1) * step) * DEG2RAD;
+
+    Vector2 v2 = {center.x + cosf(angle1) * radius,
+                  center.y + sinf(angle1) * radius};
+    Vector2 v3 = {center.x + cosf(angle2) * radius,
+                  center.y + sinf(angle2) * radius};
+
+    /* DrawLineV inherently handles the Camera translation/zoom for us */
+    DrawLineV(v2, v3, color);
+  }
+}
+
+/* ======================================================================== */
+/* Splines                                                                  */
+/* ======================================================================== */
+
+Vector2 GetSplinePointLinear(Vector2 startPos, Vector2 endPos, float t) {
+  Vector2 result;
+  result.x = startPos.x + (endPos.x - startPos.x) * t;
+  result.y = startPos.y + (endPos.y - startPos.y) * t;
+  return result;
+}
+
+void DrawSplineLinear(const Vector2 *points, int pointCount, float thick,
+                      Color color) {
+  if (points == NULL || pointCount < 2)
+    return;
+  for (int i = 0; i < pointCount - 1; i++) {
+    DrawLineEx(points[i], points[i + 1], thick, color);
+  }
+}
+
+void DrawSplineBezierCubic(const Vector2 *points, int pointCount, float thick,
+                           Color color) {
+  /* Stub: cubic Bezier requires groups of 4 control points.
+     Falling back to straight segments for the software renderer */
+  DrawSplineLinear(points, pointCount, thick, color);
+}
+
+/* ======================================================================== */
+/* Collision Detection (Always evaluated in World Space)                    */
+/* ======================================================================== */
+
+bool CheckCollisionRecs(Rectangle rec1, Rectangle rec2) {
+  return (rec1.x < rec2.x + rec2.width) && (rec1.x + rec1.width > rec2.x) &&
+         (rec1.y < rec2.y + rec2.height) && (rec1.y + rec1.height > rec2.y);
+}
+
+bool CheckCollisionCircles(Vector2 center1, float radius1, Vector2 center2,
+                           float radius2) {
+  float dx = center2.x - center1.x;
+  float dy = center2.y - center1.y;
+  float distSq = dx * dx + dy * dy;
+  float radiusSum = radius1 + radius2;
+  return (distSq <= radiusSum * radiusSum);
+}
+
+bool CheckCollisionCircleRec(Vector2 center, float radius, Rectangle rec) {
+  float recCX = rec.x + rec.width * 0.5f;
+  float recCY = rec.y + rec.height * 0.5f;
+
+  float dx = fabsf(center.x - recCX);
+  float dy = fabsf(center.y - recCY);
+
+  if (dx > (rec.width * 0.5f + radius))
+    return false;
+  if (dy > (rec.height * 0.5f + radius))
+    return false;
+  if (dx <= rec.width * 0.5f)
+    return true;
+  if (dy <= rec.height * 0.5f)
+    return true;
+
+  float cornerDx = dx - rec.width * 0.5f;
+  float cornerDy = dy - rec.height * 0.5f;
+  return (cornerDx * cornerDx + cornerDy * cornerDy) <= (radius * radius);
+}
+
+bool CheckCollisionPointRec(Vector2 point, Rectangle rec) {
+  return (point.x >= rec.x) && (point.x <= rec.x + rec.width) &&
+         (point.y >= rec.y) && (point.y <= rec.y + rec.height);
+}
+
+bool CheckCollisionPointCircle(Vector2 point, Vector2 center, float radius) {
+  return CheckCollisionCircles(point, 0, center, radius);
+}
+
+static float TriangleSign(Vector2 p1, Vector2 p2, Vector2 p3) {
+  return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+}
+
+bool CheckCollisionPointTriangle(Vector2 point, Vector2 p1, Vector2 p2,
+                                 Vector2 p3) {
+  float d1 = TriangleSign(point, p1, p2);
+  float d2 = TriangleSign(point, p2, p3);
+  float d3 = TriangleSign(point, p3, p1);
+
+  bool has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+  bool has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+
+  return !(has_neg && has_pos);
+}
+
+Rectangle GetCollisionRec(Rectangle rec1, Rectangle rec2) {
+  Rectangle overlap = {0, 0, 0, 0};
+  if (CheckCollisionRecs(rec1, rec2)) {
+    float x1 = fmaxf(rec1.x, rec2.x);
+    float x2 = fminf(rec1.x + rec1.width, rec2.x + rec2.width);
+    float y1 = fmaxf(rec1.y, rec2.y);
+    float y2 = fminf(rec1.y + rec1.height, rec2.y + rec2.height);
+    overlap.x = x1;
+    overlap.y = y1;
+    overlap.width = x2 - x1;
+    overlap.height = y2 - y1;
+  }
+  return overlap;
+}
+
+Makefile: 
+# =============================================================================
+#  raylib-sdl12 — Makefile
+#
+#  Adjust SDL_CFLAGS / SDL_LIBS for your retro toolchain.
+#  On a modern Linux with SDL 1.2 dev packages installed:
+#      sudo apt install libsdl1.2-dev libsdl-ttf2.0-dev libsdl-mixer1.2-dev
+#
+# =============================================================================
+
+CXX       ?= g++
+AR        ?= ar
+CXXFLAGS  := -Wall -Wextra -O2 -Iheaders
+
+# SDL 1.2 flags (use sdl-config if available)
+SDL_CFLAGS  := $(shell sdl-config --cflags 2>/dev/null || echo "-I/usr/include/SDL")
+SDL_LIBS    := $(shell sdl-config --libs   2>/dev/null || echo "-lSDL") -lSDL_ttf -lSDL_mixer -lSDL_image
+
+CXXFLAGS += $(SDL_CFLAGS)
+
+SRCDIR    := src
+OBJDIR    := obj
+
+SOURCES   := $(wildcard $(SRCDIR)/*.cpp)
+OBJECTS   := $(patsubst $(SRCDIR)/%.cpp, $(OBJDIR)/%.o, $(SOURCES))
+
+LIBNAME   := libraylib-sdl12.a
+
+# --- Targets ---
+
+.PHONY: all clean example
+
+all: $(LIBNAME)
+
+$(LIBNAME): $(OBJECTS)
+	$(AR) rcs $@ $^
+	@echo "==> Built $(LIBNAME)"
+
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(OBJDIR):
+	mkdir -p $(OBJDIR)
+
+clean:
+	rm -rf $(OBJDIR) $(LIBNAME) example_app
+
+# --- Example build (assumes example.cpp in project root) ---
+
+example: $(LIBNAME)
+	$(CXX) $(CXXFLAGS) example.cpp -o example_app -L. -lraylib-sdl12 $(SDL_LIBS) -lm
+	@echo "==> Built example_app"
